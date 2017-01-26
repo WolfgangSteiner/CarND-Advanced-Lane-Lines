@@ -55,10 +55,6 @@ def abs_channel(*imgs):
     else:
         return result
 
-def abs_diff_channels(a,b):
-    return np.abs(a.astype(np.int32) - b.astype(np.int32)).astype(np.uint8)
-
-
 
 parser = argparse.ArgumentParser()
 #parser.add_argument('model')

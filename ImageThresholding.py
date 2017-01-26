@@ -127,3 +127,7 @@ def enhance_white_yellow(img, min_l=116, min_s=80):
     white = hls_mask(img, 0, 180, 192, 255, 0, 255)
     mask = cv2.bitwise_or(yello, white)
     return apply_mask(img, mask)
+
+
+def abs_diff_channels(a,b):
+    return np.abs(a.astype(np.int32) - b.astype(np.int32)).astype(np.uint8)
