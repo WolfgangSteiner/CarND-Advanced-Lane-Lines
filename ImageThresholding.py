@@ -3,9 +3,7 @@ import cv2
 
 
 def binarize_img(img, min_thres, max_thres):
-    result = np.zeros_like(img)
-    result[(img >= min_thres) & (img <= max_thres)] = 1
-    return result.astype(np.uint8)
+    return cv2.inRange(img, min_thres, max_thres) / 255
 
 
 def bgr2hls(img):
