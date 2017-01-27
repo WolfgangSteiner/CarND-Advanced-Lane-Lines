@@ -29,6 +29,15 @@ class LaneLine(object):
         self.peaks = None
 
 
+    def calc_interpolated_line_points(self, h):
+        pts = []
+        for y in np.arange(0,h+1,h/16):
+            x = np.polyval(self.current_fit,y)
+            pts.append((x,y))
+
+        return np.array(pts, np.int32)
+
+
     @staticmethod
     def Extract(img, start_x):
         line = LaneLine()
@@ -36,7 +45,7 @@ class LaneLine(object):
             lane_points = LaneLine.sliding_window(img, start_x)
             line.lane_points = lane_points
 
-            if len(line.lane_points) > 2:
+            if len(line.lane_points) > 6:
                 line.current_fit = LaneLine.fit_quadratic(lane_points)
 
         else:
@@ -111,7 +120,7 @@ class LaneLine(object):
     @staticmethod
     def sliding_window(img, start_x):
         h,w = img.shape
-        delta_y = h // 16
+        delta_y = h // 8
         delta_x = w // 8
         result = []
         y = h - delta_y
@@ -122,6 +131,7 @@ class LaneLine(object):
 
         dx = 0
         ddx = 0
+        result.append((start_x, h-1))
         while y >= 0:
             x1 = int(max(0,x - delta_x / 2))
             x2 = x1 + delta_x
@@ -147,6 +157,6 @@ class LaneLine(object):
         #        x += dx
         #        dx += ddx
 
-            y -= delta_y / 2
+            y -= 2
 
         return np.array(result)

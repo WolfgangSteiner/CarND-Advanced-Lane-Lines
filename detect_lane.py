@@ -30,35 +30,25 @@ def mask_as_image(m):
     return np.stack((m,m,m),axis=2).astype(np.uint8) * 255
 
 
-def draw_lane_line(img,lane_line):
+def draw_lane_line(img,lane_line,scale=1):
     h,w = img.shape[0:2]
     pts = []
-    for y in np.arange(0,h+1,h/16):
-        x = np.polyval(lane_line.current_fit,y)
-        pts.append((x,y))
-    coords = np.array(pts, np.int32)
-    cv2.polylines(img, [coords], isClosed=False, color=(0,0,255), thickness=4)
+    coords = lane_line.calc_interpolated_line_points(h)
+    thickness = max(1, 4 / scale)
+    cv2.polylines(img, [coords], isClosed=False, color=color.red, thickness=thickness)
 
 
 def fill_lane_area(img, left, right):
-    pts = []
     h,w = img.shape[0:2]
-    if len(left.lane_points):
-        pts.append((left.lane_points[0][0],h))
-        for p in left.lane_points:
-            pts.append(p)
-
-    if len(right.lane_points):
-        for p in reversed(right.lane_points):
-            pts.append(p)
-        pts.append((right.lane_points[0][0],h))
-
-    if len(pts):
-        cv2.fillPoly(img, np.array([pts],np.int32), (0,255,0))
+    pts = []
+    left_pts = left.calc_interpolated_line_points(h)
+    right_pts = right.calc_interpolated_line_points(h)
+    if len(left_pts) and len(right_pts):
+        coords = np.stack((left_pts, right_pts[::-1,:]), axis=0).astype(np.int32).reshape((-1,2))
+        cv2.fillPoly(img, [coords], color.green)
 
 
-
-def detect_lane(orig_img, enhanced_warped_img, warped_img, M_inv):
+def detect_lane(orig_img, enhanced_warped_img, warped_img, M_inv,scale=1):
     left, right = extract_lane_lines(enhanced_warped_img)
     h,w = enhanced_warped_img.shape[0:2]
     composite_img = np.zeros((h,w,3), np.uint8)
@@ -66,16 +56,14 @@ def detect_lane(orig_img, enhanced_warped_img, warped_img, M_inv):
     fill_lane_area(composite_img, left, right)
 
     if len(left.current_fit):
-        draw_lane_line(composite_img, left)
+        draw_lane_line(composite_img, left, scale)
 
     if len(right.current_fit):
-        draw_lane_line(composite_img, right)
+        draw_lane_line(composite_img, right, scale)
 
-
-    transformed_composite_img = inv_perspective_transform(composite_img, M_inv)
+    transformed_composite_img = inv_perspective_transform(composite_img, M_inv,scale)
     annotated_img = cv2.addWeighted(orig_img, 1, transformed_composite_img, 0.3, 0)
     warped_annotated_img = cv2.addWeighted(warped_img, 1, composite_img, 0.3, 0)
-
 
     annotated_enhanced_warped_img = mask_as_image(enhanced_warped_img)
     draw_lane_points(annotated_enhanced_warped_img, left)

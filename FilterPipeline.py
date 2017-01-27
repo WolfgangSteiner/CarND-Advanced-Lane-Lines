@@ -11,7 +11,7 @@ def enhance_image(yuv_image):
     uv2 = binarize_img(v_eq, 0, 1 * 8)
     uv3 = cv2.bitwise_and(uv1, uv2)
 
-    uv4 = binarize_img(y_eq, 255-1, 255)
+    uv4 = binarize_img(y_eq, 255-2, 255)
     uv5 = binarize_img(u_minus_v, 0, 16)
     uv6 = cv2.bitwise_and(uv4,uv5)
 
