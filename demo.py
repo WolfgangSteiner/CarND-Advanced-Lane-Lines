@@ -8,6 +8,9 @@ from detect_lane import detect_lane
 import argparse
 from Color import color
 from Drawing import *
+import Utils
+import time
+from LaneDetector import LaneDetector
 
 def scale_img(img, factor):
     return cv2.resize(img,None,fx=factor,fy=factor, interpolation=cv2.INTER_CUBIC)
@@ -62,6 +65,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-1', action="store_const", dest="video_file", const="project")
 parser.add_argument('-2', action="store_const", dest="video_file", const="challenge")
 parser.add_argument('-3', action="store_const", dest="video_file", const="harder_challenge")
+parser.add_argument('-d', action="store_const", dest="delay", const=0.5, default=0.0)
 parser.add_argument('-t', action="store", dest="t1", default=None, type=float)
 args = parser.parse_args()
 
@@ -100,9 +104,12 @@ cv2.namedWindow('test')
 # Do whatever you want with contours
 #cv2.imshow('test', frame)
 
+detector = LaneDetector()
+
 counter = 0
 frame_skip = 1
 start_frame = 60 * args.t1
+scale = 4
 for frame in clip.iter_frames():
     counter += 1
     if counter % frame_skip or counter < start_frame:
@@ -111,71 +118,38 @@ for frame in clip.iter_frames():
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     frame = undistort_image(frame)
     frame = scale_img(frame, 0.5)
-
-    warped_img, M_inv = perspective_transform(frame)
-    warped_img_yuv = bgr2yuv(warped_img)
-    b = enhance_white_yellow(warped_img,min_l=64, min_s=64)
-#    b_hls = bgr2hls(b)
-#    c = mag_grad(b_hls, 1, 255, ksize=3, ch=2)
-#    e = cv2.bitwise_and(c,d)
-
-    y,u,v = split_channels(warped_img_yuv)
-    y_divisor = np.clip(255 - y, 1, 255)
-    u_minus_v = abs_diff_channels(u,v)
-    y_eq,u_eq,v_eq = equalize_channel(y,u,v)
-
-    #mg = mag_grad(warped_img_yuv, 1, 255, ksize=3, ch=0)
-    #dg = dir_grad(warped_img_yuv, dir_grad_min, dir_grad_min + dir_grad_delta, ksize=dir_grad_ksize, ch=0)
-    #dg = cv2.bitwise_and(mg,dg)
-
-#    u = np.divide(u, y_divisor)*255
-#    v = np.divide(v, y_divisor)*255
-#    u,v = clip_channel(u,v)
-    uv1 = binarize_img(u_eq, 30 * 8, 255)
-    uv2 = binarize_img(v_eq, 0, 1 * 8)
-    uv3 = cv2.bitwise_and(uv1, uv2)
-
-    uv4 = binarize_img(y_eq, 255-8, 255)
-    uv5 = binarize_img(u_minus_v, 0, 32)
-    uv6 = cv2.bitwise_and(uv4,uv5)
-
-    detection_input = cv2.bitwise_or(uv3, uv6)
-
     new_frame = np.zeros_like(frame)
 
-    annotated_frame, warped_annotated_frame, annotated_input_img = detect_lane(frame, detection_input, warped_img, M_inv)
+    detector.process(frame)
+    annotated_frame, warped_annotated_frame, annotated_input_img = detector.annotate(frame)
+
     scale_and_paste(new_frame, annotated_frame, (0,0), factor=0.75)
-    #scale_and_paste_mask(new_frame, c,(6,4))
-
-    scale_and_paste_mask(new_frame, uv1, (6,4), factor=0.5)
-    scale_and_paste_mask(new_frame, uv2, (6,5), factor=0.5)
-    scale_and_paste_mask(new_frame, uv3, (6,6), factor=0.5)
-
-    scale_and_paste_mask(new_frame, uv4, (7,4), factor=0.5)
-    scale_and_paste_mask(new_frame, uv5, (7,5), factor=0.5)
-    scale_and_paste_mask(new_frame, uv6, (7,6), factor=0.5)
-    #scale_and_paste_mask(new_frame, dg,(3,5))
-    #scale_and_paste_mask(new_frame, cv2.bitwise_and(uv6,dg),(4,5))
-
-    scale_and_paste(new_frame, warped_img, (0,3))
-    #scale_and_paste(new_frame, b, (1,3))
-    scale_and_paste_mask(new_frame, detection_input, (1,3))
-    scale_and_paste(new_frame, annotated_input_img,(2,3))
-    scale_and_paste(new_frame, warped_annotated_frame, (3,3))
+    scale_and_paste(new_frame, detector.warped_frame, (0,3), factor=scale*0.25)
+    scale_and_paste_mask(new_frame, detector.detection_input, (1,3), factor=scale*0.25)
+    scale_and_paste(new_frame, annotated_input_img,(2,3), factor=scale*0.25)
+    scale_and_paste(new_frame, warped_annotated_frame, (3,3), factor=scale*0.25)
 
 
-    for ch, pos, t in zip((y,u,v), range(0,3), ('YUV')):
-        scale_and_paste_channel(new_frame,ch,(6,pos), factor=0.5, title=t)
+    for ch, pos, t in zip((detector.s,detector.v), range(0,2), ('SV')):
+        scale_and_paste_channel(new_frame,ch,(6,pos), factor=scale*0.125, title=t)
 
-#    scale_and_paste_channel(new_frame, u_minus_v,(4,3),title='u-v')
+    for ch, pos, t in zip((detector.s_eq,detector.v_eq), range(0,2), ('SV')):
+        scale_and_paste_channel(new_frame,ch,(7,pos), factor=scale*0.125, title="EQ(%s)"%t)
 
-    for ch, pos, t in zip((y_eq,u_eq,v_eq), range(0,3), ('YUV')):
-        scale_and_paste_channel(new_frame,ch,(7,pos), factor=0.5, title="EQ(%s)"%t)
+    scale_and_paste_mask(new_frame, detector.mag_s, (6,2), title="mag_s", factor=scale*0.125)
+    scale_and_paste_mask(new_frame, detector.mag_v, (6,3), title="mag_v", factor=scale*0.125)
+    scale_and_paste_mask(new_frame, detector.mag, (6,4), title="mag", factor=scale*0.125)
+    scale_and_paste_mask(new_frame, detector.s_mask, (6,5), title="s_mask", factor=scale*0.125)
+    scale_and_paste_mask(new_frame, detector.dir, (7,2), title="dir", factor=scale*0.125)
+    scale_and_paste_mask(new_frame, detector.v_mask, (7,3), title="v_mask", factor=scale*0.125)
 
+    put_text(new_frame, "%02d.%d" % (counter//60,counter%60), (0,0))
 
-    put_text(new_frame, "%d:%d.%d" % (counter//3600, counter//60,counter%60), (0,0))
-
-    #scale_and_paste_mask(new_frame, e,(2,3))
     new_frame = scale_img(new_frame, 2.0)
     cv2.imshow("test",new_frame)
-    cv2.waitKey(1)
+    key = cv2.waitKey(10)
+    if key == ord(' '):
+        Utils.save_screenshot(new_frame)
+
+    if args.delay > 0:
+        time.sleep(args.delay)
