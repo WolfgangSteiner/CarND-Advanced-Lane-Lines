@@ -40,26 +40,30 @@ def draw_lane_line(img,lane_line):
     cv2.polylines(img, [coords], isClosed=False, color=(0,0,255), thickness=4)
 
 
-def detect_lane(orig_img, enhanced_warped_img, warped_img, M_inv):
-    left, right = extract_lane_lines(enhanced_warped_img)
+def fill_lane_area(img, left, right):
     pts = []
-    h,w = enhanced_warped_img.shape[0:2]
-
+    h,w = img.shape[0:2]
     if len(left.lane_points):
         pts.append((left.lane_points[0][0],h))
         for p in left.lane_points:
             pts.append(p)
-
 
     if len(right.lane_points):
         for p in reversed(right.lane_points):
             pts.append(p)
         pts.append((right.lane_points[0][0],h))
 
+    if len(pts):
+        cv2.fillPoly(img, np.array([pts],np.int32), (0,255,0))
+
+
+
+def detect_lane(orig_img, enhanced_warped_img, warped_img, M_inv):
+    left, right = extract_lane_lines(enhanced_warped_img)
+    h,w = enhanced_warped_img.shape[0:2]
     composite_img = np.zeros((h,w,3), np.uint8)
 
-    if len(pts):
-        cv2.fillPoly(composite_img, np.array([pts],np.int32), (0,255,0))
+    fill_lane_area(composite_img, left, right)
 
     if len(left.current_fit):
         draw_lane_line(composite_img, left)
