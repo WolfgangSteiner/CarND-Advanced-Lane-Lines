@@ -5,31 +5,16 @@ from ImageProcessing import *
 from ImageThresholding import *
 
 class LaneDetector(object):
-    def __init__(self):
+    def __init__(self, pipeline):
         self.left_lane_line = LaneLine()
         self.right_lane_line = LaneLine()
         self.scale = 4
+        self.pipeline = pipeline
+
 
     def process(self, frame):
         self.warped_frame, self.M_inv = perspective_transform(frame,self.scale)
-        self.warped_frame_hsv = bgr2hsv(self.warped_frame)
-        self.h,self.s,self.v = split_channels(self.warped_frame_hsv)
-        self.s_eq,self.v_eq = equalize_adapthist_channel(self.s,self.v, clip_limit=0.02, nbins=4096, kernel_size=(15,4))
-        self.mag_v = mag_grad(self.v_eq, 32, 255, ksize=3)
-        self.mag_s = mag_grad(self.s_eq, 32, 255, ksize=3)
-        self.mag = AND(self.mag_v, self.mag_s)
-        self.s_mask = NOT(binarize_img(self.s_eq, 32, 175))
-        self.v_mask = binarize_img(self.v_eq, 160, 255)
-        self.mag_and_s_mask = AND(self.mag_v, binarize_img(self.v_eq, 128, 255),self.s_mask)
-
-        center_angle = 0.5
-        delta_angle = 0.5
-        alpha1 = center_angle - 0.5*delta_angle
-        alpha2 = alpha1 + delta_angle
-        self.dir = NOT(dir_grad(self.v_eq, alpha1, alpha2, ksize=3))
-
-        self.mag_and_dir = AND(self.mag, self.dir)
-        self.detection_input = AND(self.mag_and_s_mask, self.v_mask)
+        self.detection_input = self.pipeline.process(self.warped_frame)
 
         self.left_lane_line.detect_left(self.detection_input)
         self.right_lane_line.detect_right(self.detection_input)

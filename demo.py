@@ -11,6 +11,7 @@ from Drawing import *
 import Utils
 import time
 from LaneDetector import LaneDetector
+from FilterPipeline import HSVPipeline
 
 def scale_img(img, factor):
     return cv2.resize(img,None,fx=factor,fy=factor, interpolation=cv2.INTER_CUBIC)
@@ -59,6 +60,13 @@ def abs_channel(*imgs):
         return result
 
 
+def plot_intermediates(target_frame, pipeline, scale=1):
+    for idx,(img,title) in enumerate(pipeline.intermediates):
+        x_pos = idx // 6 + 6
+        y_pos = idx % 6
+        scale_and_paste(target_frame, img, (x_pos, y_pos), factor=0.125*scale, title=title)
+
+
 parser = argparse.ArgumentParser()
 #parser.add_argument('model')
 #parser.add_argument('test_data')
@@ -104,7 +112,9 @@ cv2.namedWindow('test')
 # Do whatever you want with contours
 #cv2.imshow('test', frame)
 
-detector = LaneDetector()
+
+pipeline = HSVPipeline()
+detector = LaneDetector(pipeline)
 
 counter = 0
 frame_skip = 1
@@ -129,19 +139,7 @@ for frame in clip.iter_frames():
     scale_and_paste(new_frame, annotated_input_img,(2,3), factor=scale*0.25)
     scale_and_paste(new_frame, warped_annotated_frame, (3,3), factor=scale*0.25)
 
-
-    for ch, pos, t in zip((detector.s,detector.v), range(0,2), ('SV')):
-        scale_and_paste_channel(new_frame,ch,(6,pos), factor=scale*0.125, title=t)
-
-    for ch, pos, t in zip((detector.s_eq,detector.v_eq), range(0,2), ('SV')):
-        scale_and_paste_channel(new_frame,ch,(7,pos), factor=scale*0.125, title="EQ(%s)"%t)
-
-    scale_and_paste_mask(new_frame, detector.mag_s, (6,2), title="mag_s", factor=scale*0.125)
-    scale_and_paste_mask(new_frame, detector.mag_v, (6,3), title="mag_v", factor=scale*0.125)
-    scale_and_paste_mask(new_frame, detector.mag, (6,4), title="mag", factor=scale*0.125)
-    scale_and_paste_mask(new_frame, detector.s_mask, (6,5), title="s_mask", factor=scale*0.125)
-    scale_and_paste_mask(new_frame, detector.dir, (7,2), title="dir", factor=scale*0.125)
-    scale_and_paste_mask(new_frame, detector.v_mask, (7,3), title="v_mask", factor=scale*0.125)
+    plot_intermediates(new_frame, pipeline, scale=scale)
 
     put_text(new_frame, "%02d.%d" % (counter//60,counter%60), (0,0))
 

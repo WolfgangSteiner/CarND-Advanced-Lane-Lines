@@ -1,6 +1,20 @@
 import cv2
 from ImageThresholding import *
 
+class FilterPipeline(object):
+    def __init__(self):
+        self.intermediates = []
+
+    def process(self,img):
+        return img
+
+    def add_intermediate_channel(self, channel, title=None):
+        self.intermediates.append((expand_channel(channel),title))
+
+    def add_intermediate_mask(self, mask, title=None):
+        self.intermediates.append((expand_mask(mask),title))
+
+
 
 def enhance_image(yuv_image):
     y,u,v = split_channels(yuv_image)
@@ -16,3 +30,46 @@ def enhance_image(yuv_image):
     uv6 = cv2.bitwise_and(uv4,uv5)
 
     return cv2.bitwise_or(uv3, uv6)
+
+
+
+
+class HSVPipeline(FilterPipeline):
+    def __init__(self):
+        super().__init__()
+
+
+    def process(self, warped_frame):
+        self.intermediates = []
+        h,s,v = split_hsv(warped_frame)
+        self.add_intermediate_channel(h,"S")
+        self.add_intermediate_channel(h,"V")
+
+        s_eq,v_eq = equalize_adapthist_channel(s,v, clip_limit=0.02, nbins=4096, kernel_size=(15,4))
+        self.add_intermediate_channel(s_eq,"EQ(S)")
+        self.add_intermediate_channel(v_eq,"EQ(V)")
+
+
+        mag_v = mag_grad(v_eq, 32, 255, ksize=3)
+        mag_s = mag_grad(s_eq, 32, 255, ksize=3)
+        mag = AND(mag_v, mag_s)
+        self.add_intermediate_mask(mag_v,"mag_v")
+        self.add_intermediate_mask(mag_s,"mag_s")
+        self.add_intermediate_mask(mag,"mag")
+
+        s_mask = NOT(binarize_img(s_eq, 32, 175))
+        v_mask = binarize_img(v_eq, 160, 255)
+        mag_and_s_mask = AND(mag_v, binarize_img(v_eq, 128, 255),s_mask)
+        self.add_intermediate_mask(s_mask,"s_mask")
+        self.add_intermediate_mask(v_mask,"v_mask")
+
+        center_angle = 0.5
+        delta_angle = 0.5
+        alpha1 = center_angle - 0.5*delta_angle
+        alpha2 = alpha1 + delta_angle
+        dir = NOT(dir_grad(v_eq, alpha1, alpha2, ksize=3))
+        mag_and_dir = AND(mag, dir)
+        self.add_intermediate_mask(dir,"dir_v")
+        self.add_intermediate_mask(mag_and_dir,"dir_v & mag")
+
+        return AND(mag_and_s_mask, v_mask)
