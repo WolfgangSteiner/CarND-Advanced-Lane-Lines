@@ -4,7 +4,6 @@ from Color import color
 from ImageProcessing import *
 from ImageThresholding import *
 
-
 class LaneDetector(object):
     def __init__(self):
         self.left_lane_line = LaneLine()
@@ -16,8 +15,8 @@ class LaneDetector(object):
         self.warped_frame_hsv = bgr2hsv(self.warped_frame)
         self.h,self.s,self.v = split_channels(self.warped_frame_hsv)
         self.s_eq,self.v_eq = equalize_adapthist_channel(self.s,self.v, clip_limit=0.02, nbins=4096, kernel_size=(15,4))
-        self.mag_v = mag_grad(self.v_eq, 32, 255, ksize=9)
-        self.mag_s = mag_grad(self.s_eq, 32, 255, ksize=9)
+        self.mag_v = mag_grad(self.v_eq, 32, 255, ksize=3)
+        self.mag_s = mag_grad(self.s_eq, 32, 255, ksize=3)
         self.mag = AND(self.mag_v, self.mag_s)
         self.s_mask = NOT(binarize_img(self.s_eq, 32, 175))
         self.v_mask = binarize_img(self.v_eq, 160, 255)
@@ -32,9 +31,16 @@ class LaneDetector(object):
         self.mag_and_dir = AND(self.mag, self.dir)
         self.detection_input = AND(self.mag_and_s_mask, self.v_mask)
 
-        self.left_lane_line = LaneLine.ExtractLeft(self.detection_input)
-        self.right_lane_line = LaneLine.ExtractRight(self.detection_input)
+        self.left_lane_line.detect_left(self.detection_input)
+        self.right_lane_line.detect_right(self.detection_input)
 
+
+
+    def draw_lane_points_and_histogram(self, img):
+        self.left_lane_line.draw_lane_points(img)
+        self.right_lane_line.draw_lane_points(img)
+        self.left_lane_line.draw_histogram(img)
+        self.right_lane_line.draw_histogram(img)
 
 
     def annotate(self, frame):
@@ -42,38 +48,23 @@ class LaneDetector(object):
 
         self.fill_lane_area(composite_img)
 
-        if len(self.left_lane_line.current_fit):
+        if len(self.left_lane_line.best_fit):
             self.draw_lane_line(composite_img, self.left_lane_line)
 
-        if len(self.right_lane_line.current_fit):
+        if len(self.right_lane_line.best_fit):
             self.draw_lane_line(composite_img, self.right_lane_line)
 
         transformed_composite_img = inv_perspective_transform(composite_img, self.M_inv, self.scale)
-        print(frame.shape, transformed_composite_img.shape)
         annotated_frame = cv2.addWeighted(frame, 1, transformed_composite_img, 0.3, 0)
         warped_annotated_frame = cv2.addWeighted(self.warped_frame, 1, composite_img, 0.3, 0)
 
         annotated_detection_input = mask_as_image(self.detection_input)
-        self.draw_lane_points(annotated_detection_input, self.left_lane_line)
-        self.draw_lane_points(annotated_detection_input, self.right_lane_line)
-        self.draw_histogram(annotated_detection_input, self.left_lane_line)
-        self.draw_histogram(annotated_detection_input, self.right_lane_line)
+        self.draw_lane_points_and_histogram(annotated_detection_input)
+        self.draw_lane_points_and_histogram(warped_annotated_frame)
 
         return annotated_frame, warped_annotated_frame, annotated_detection_input
 
 
-    def draw_histogram(self, img, line):
-        if not line.histogram is None:
-            h,w = img.shape[0:2]
-            cv2.polylines(img, [line.histogram], isClosed=False, color=(127,255,127))
-            for p in line.peaks:
-                draw_marker(img, p)
-
-
-    def draw_lane_points(self,img, line):
-        if line.lane_points is not None:
-            for p in line.lane_points:
-                draw_pixel(img, p, color=color.pink)
 
 
     def draw_lane_line(self,img,lane_line):
