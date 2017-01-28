@@ -14,6 +14,8 @@ class LaneLine(object):
         self.bestx = None
         #polynomial coefficients averaged over the last n iterations
         self.best_fit = None
+        #polynomial coefficients averaged over the last n iterations in meters
+        self.best_fit_meters = None
         #polynomial coefficients for the most recent fit
         self.current_fit = [np.array([False])]
         #radius of curvature of the line in some units
@@ -29,6 +31,22 @@ class LaneLine(object):
 
         self.peaks = None
 
+        # conversion from pixels to meters:
+        self.xm_per_px = None
+        self.ym_per_px = None
+
+        # conversion factors for poly coefficients
+        self.pconv = np.ones(3)
+
+
+    def initialize(self, frame_size, xm_per_px, ym_per_px):
+        self.frame_size = frame_size
+        self.xm_per_px = xm_per_px
+        self.ym_per_px = ym_per_px
+        self.pconv[0] = xm_per_px
+        self.pconv[1] = xm_per_px / ym_per_px
+        self.pconv[2] = xm_per_px / ym_per_px**2
+
 
     def has_good_fit(self):
         return self.best_fit is not None and len(self.best_fit) == 3
@@ -39,7 +57,7 @@ class LaneLine(object):
         if self.has_good_fit():
             for y in np.arange(0,h+1,h/16):
                 x = poly.polyval(y,self.best_fit)
-                pts.append((x,y))
+                pts.append((x,h-y))
 
         return np.array(pts, np.int32)
 
@@ -50,6 +68,7 @@ class LaneLine(object):
 
             if len(self.lane_points) > 3:
                 self.current_fit = LaneLine.fit_quadratic(self.lane_points)
+                #print(self.current_fit)
 
         else:
             self.lane_points = []
@@ -72,6 +91,7 @@ class LaneLine(object):
 
 
     def detect_at(self,img, x):
+        h,w = img.shape
         self.start_x = None
 
         if False and self.has_good_fit():
@@ -80,9 +100,8 @@ class LaneLine(object):
             self.histogram = None
         else:
             self.peaks = []
-            h,w = img.shape
-            x1 = int(x - w/16)
-            x2 = int(x + w/16)
+            x1 = int(x - w/8)
+            x2 = int(x + w/8)
             histogram = np.sum(img[int(img.shape[0]/2):,x1:x2], axis=0)
 
             start_x = LaneLine.find_peak(histogram)
@@ -102,6 +121,25 @@ class LaneLine(object):
         if self.start_x != None:
             self.detect(img, self.start_x)
 
+
+    def calc_radius(self):
+        if self.has_good_fit():
+            A = self.best_fit[2] * self.pconv[2]
+            B = self.best_fit[1] * self.pconv[1]
+            R = pow(1 + B**2, 1.5) / max(1e-5, abs(A))
+            return R
+        else:
+            return NULL
+
+
+    def calc_distance_from_center(self):
+        if self.has_good_fit():
+            d_in_px = self.best_fit[0] - self.frame_size[1] / 2
+            d_in_m = d_in_px * self.pconv[0]
+            #print(d_in_m)
+            return d_in_m
+        else:
+            return None
 
 
     def update_polynomial(self):
@@ -146,9 +184,10 @@ class LaneLine(object):
 
 
     def draw_lane_points(self,img):
+        h,w = img.shape[0:2]
         if self.lane_points is not None:
-            for p in self.lane_points:
-                draw_pixel(img, p, color=color.pink)
+            for (x,y) in self.lane_points:
+                draw_pixel(img, (x,h-y-1), color=color.pink)
 
 
     @staticmethod
@@ -162,7 +201,7 @@ class LaneLine(object):
             delta_x = w // 8
 
         result = []
-        y = h - delta_y
+        y = h
         x = start_x
         last_x = None
         last_y = None
@@ -171,16 +210,16 @@ class LaneLine(object):
         dx = 0
         ddx = 0
         #result.append((start_x, h-1))
-        while y >= 0:
+        while y > 0:
 #            if best_fit is not None:
 #                x = np.polyval(best_fit, y)
             x1 = int(max(0,x - delta_x / 2))
             x2 = x1 + delta_x
-            histogram = np.sum(img[y:y+delta_y, x1:x2], axis=0)
+            histogram = np.sum(img[y-delta_y:y, x1:x2], axis=0)
             peak = LaneLine.find_peak(histogram)
             if peak is not None:
                 x = peak + x1
-                result.append((x,y))
+                result.append((x,h-y))
 
                 if last_x is not None and last_y is not None:
                     dx = (last_x - x) / (last_y - y)

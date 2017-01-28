@@ -7,6 +7,10 @@ def binarize_img(img, min_thres, max_thres):
     return cv2.inRange(img, min_thres, max_thres) / 255
 
 
+def bgr2rgb(img):
+    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+
 def bgr2hls(img):
     return cv2.cvtColor(img, cv2.COLOR_BGR2HLS)
 

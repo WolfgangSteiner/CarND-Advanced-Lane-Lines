@@ -77,6 +77,7 @@ parser.add_argument('-3', action="store_const", dest="video_file", const="harder
 parser.add_argument('-d', action="store_const", dest="delay", const=0.5, default=0.0)
 parser.add_argument('-dd', action="store_const", dest="delay", const=1.0, default=0.0)
 parser.add_argument('-t', action="store", dest="t1", default=None, type=str)
+parser.add_argument('--render', action="store_true", dest="render")
 args = parser.parse_args()
 
 if args.video_file == None:
@@ -94,8 +95,6 @@ else:
         args.t1 += int(t_array[1])
 
 args.video_file += "_video.mp4"
-clip = VideoFileClip(args.video_file)
-
 
 pipeline = YUVPipeline()
 detector = LaneDetector(pipeline)
@@ -104,19 +103,22 @@ counter = 0
 frame_skip = 1
 start_frame = args.t1
 scale = 4
-for frame in clip.iter_frames():
-    counter += 1
-    if counter % frame_skip or counter < start_frame:
-        continue
 
+
+def process_frame(frame):
+    global counter
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     frame = undistort_image(frame)
     frame = scale_img(frame, 0.5)
     new_frame = np.zeros((frame.shape[0],frame.shape[1]//4*5,3),np.uint8)
 
-    pipeline.poll()
+    if not args.render:
+        pipeline.poll()
+
     detector.process(frame)
     annotated_frame, warped_annotated_frame, annotated_input_img = detector.annotate(frame)
+    R_left, R_right = detector.calc_radius()
+    d = detector.calc_distance_from_center()
 
     scale_and_paste(new_frame, annotated_frame, (0,0), factor=0.75)
     scale_and_paste(new_frame, detector.warped_frame, (0,3), factor=scale*0.25)
@@ -126,12 +128,35 @@ for frame in clip.iter_frames():
     plot_intermediates(new_frame, pipeline, scale=scale)
 
     put_text(new_frame, "%02d.%d" % (counter//60,counter%60), (0,0))
+    put_text(new_frame, "R1 = %5.2fm  R2 = %5.2fm" % (R_left, R_right), (0,20))
 
-    new_frame = scale_img(new_frame, 2.0)
-    cv2.imshow("test",new_frame)
-    key = cv2.waitKey(10)
-    if key == ord(' '):
-        Utils.save_screenshot(new_frame)
+    pos_text = "to the " + ("left" if d <= 0 else "right")
+    put_text(new_frame, "Distance from center: %2.2fm %s"  % (abs(d), pos_text), (0,35))
 
-    if args.delay > 0:
-        time.sleep(args.delay)
+    counter += 1
+    #new_frame = scale_img(new_frame, 2.0)
+    return bgr2rgb(new_frame)
+
+
+
+clip = VideoFileClip(args.video_file)
+
+if args.render:
+    out_file_name = args.video_file.split(".")[0] + "_annotated.mp4"
+    annotated_clip = clip.fl_image(process_frame)
+    annotated_clip.write_videofile(out_file_name, audio=False)
+else:
+    for frame in clip.iter_frames():
+        counter += 1
+        if counter % frame_skip or counter < start_frame:
+            continue
+
+        new_frame = process_frame(frame)
+
+        cv2.imshow("test",new_frame)
+        key = cv2.waitKey(10)
+        if key == ord(' '):
+            Utils.save_screenshot(new_frame)
+
+        if args.delay > 0:
+            time.sleep(args.delay)

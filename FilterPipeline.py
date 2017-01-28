@@ -96,9 +96,7 @@ class YUVPipeline(FilterPipeline):
         for ch in "mag_y_eq,mag_u_eq,mag_v_eq".split(","):
             self.add_intermediate_mask(eval(ch),ch)
 
-
-
-        return AND(OR(white, yellow),mag_y_eq)
+        return OR(white, yellow)
 
 
 class HSVPipeline(FilterPipeline):
