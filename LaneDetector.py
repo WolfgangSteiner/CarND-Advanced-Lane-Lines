@@ -20,7 +20,6 @@ class LaneDetector(object):
         self.right_lane_line.detect_right(self.detection_input)
 
 
-
     def draw_lane_points_and_histogram(self, img):
         self.left_lane_line.draw_lane_points(img)
         self.right_lane_line.draw_lane_points(img)

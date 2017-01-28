@@ -11,7 +11,7 @@ from Drawing import *
 import Utils
 import time
 from LaneDetector import LaneDetector
-from FilterPipeline import HSVPipeline
+from FilterPipeline import HSVPipeline,YUVPipeline
 
 def scale_img(img, factor):
     return cv2.resize(img,None,fx=factor,fy=factor, interpolation=cv2.INTER_CUBIC)
@@ -113,7 +113,7 @@ cv2.namedWindow('test')
 #cv2.imshow('test', frame)
 
 
-pipeline = HSVPipeline()
+pipeline = YUVPipeline()
 detector = LaneDetector(pipeline)
 
 counter = 0

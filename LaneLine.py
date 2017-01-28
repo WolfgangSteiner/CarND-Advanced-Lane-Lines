@@ -93,7 +93,7 @@ class LaneLine(object):
 
 
         if self.start_x == None and self.has_good_fit():
-            print(self.best_fit)
+            #print(self.best_fit)
             self.start_x = self.best_fit[2]
 
         if self.start_x != None:
