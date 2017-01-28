@@ -62,9 +62,10 @@ def abs_channel(*imgs):
 
 def plot_intermediates(target_frame, pipeline, scale=1):
     for idx,(img,title) in enumerate(pipeline.intermediates):
-        x_pos = idx // 6 + 6
-        y_pos = idx % 6
-        scale_and_paste(target_frame, img, (x_pos, y_pos), factor=0.125*scale, title=title)
+        x_pos = idx // 8 + 6
+        y_pos = idx % 8
+        if img is not None:
+            scale_and_paste(target_frame, img, (x_pos, y_pos), factor=0.125*scale, title=title)
 
 
 parser = argparse.ArgumentParser()
@@ -74,7 +75,8 @@ parser.add_argument('-1', action="store_const", dest="video_file", const="projec
 parser.add_argument('-2', action="store_const", dest="video_file", const="challenge")
 parser.add_argument('-3', action="store_const", dest="video_file", const="harder_challenge")
 parser.add_argument('-d', action="store_const", dest="delay", const=0.5, default=0.0)
-parser.add_argument('-t', action="store", dest="t1", default=None, type=float)
+parser.add_argument('-dd', action="store_const", dest="delay", const=1.0, default=0.0)
+parser.add_argument('-t', action="store", dest="t1", default=None, type=str)
 args = parser.parse_args()
 
 if args.video_file == None:
@@ -82,35 +84,17 @@ if args.video_file == None:
 
 if args.t1 == None:
     if args.video_file == "project":
-        args.t1 = 9.25
+        args.t1 = 9 * 60
     else:
         args.t1 = 0
+else:
+    t_array = args.t1.split(".")
+    args.t1 = int(t_array[0]) * 60
+    if len(t_array) == 2:
+        args.t1 += int(t_array[1])
 
 args.video_file += "_video.mp4"
 clip = VideoFileClip(args.video_file)
-
-dir_grad_min = 0.0
-dir_grad_delta = 0.5
-dir_grad_ksize = 3
-
-def on_dir_grad_min(val):
-    global dir_grad_min
-    dir_grad_min = val / 1000.0
-
-def on_dir_grad_delta(val):
-    global dir_grad_delta
-    dir_grad_delta = val / 1000.0
-
-def on_dir_grad_ksize(val):
-    global dir_grad_ksize
-    dir_grad_ksize = 1 + 2*val
-
-cv2.namedWindow('test')
-#cv2.createTrackbar('dir_grad min', 'test', 0, 2000, on_dir_grad_min)
-#cv2.createTrackbar('dir_grad delta', 'test', 500, 2000, on_dir_grad_delta)
-#cv2.createTrackbar('dir_grad ksize', 'test', 1, 10, on_dir_grad_ksize)
-# Do whatever you want with contours
-#cv2.imshow('test', frame)
 
 
 pipeline = YUVPipeline()
@@ -118,7 +102,7 @@ detector = LaneDetector(pipeline)
 
 counter = 0
 frame_skip = 1
-start_frame = 60 * args.t1
+start_frame = args.t1
 scale = 4
 for frame in clip.iter_frames():
     counter += 1
@@ -128,7 +112,7 @@ for frame in clip.iter_frames():
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     frame = undistort_image(frame)
     frame = scale_img(frame, 0.5)
-    new_frame = np.zeros_like(frame)
+    new_frame = np.zeros((frame.shape[0],frame.shape[1]//4*5,3),np.uint8)
 
     pipeline.poll()
     detector.process(frame)
@@ -136,9 +120,8 @@ for frame in clip.iter_frames():
 
     scale_and_paste(new_frame, annotated_frame, (0,0), factor=0.75)
     scale_and_paste(new_frame, detector.warped_frame, (0,3), factor=scale*0.25)
-    scale_and_paste_mask(new_frame, detector.detection_input, (1,3), factor=scale*0.25)
-    scale_and_paste(new_frame, annotated_input_img,(2,3), factor=scale*0.25)
-    scale_and_paste(new_frame, warped_annotated_frame, (3,3), factor=scale*0.25)
+    scale_and_paste(new_frame, annotated_input_img,(1,3), factor=scale*0.25)
+    scale_and_paste(new_frame, warped_annotated_frame, (2,3), factor=scale*0.25)
 
     plot_intermediates(new_frame, pipeline, scale=scale)
 

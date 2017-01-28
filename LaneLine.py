@@ -36,9 +36,10 @@ class LaneLine(object):
 
     def calc_interpolated_line_points(self, h):
         pts = []
-        for y in np.arange(0,h+1,h/16):
-            x = poly.polyval(y,self.best_fit)
-            pts.append((x,y))
+        if self.has_good_fit():
+            for y in np.arange(0,h+1,h/16):
+                x = poly.polyval(y,self.best_fit)
+                pts.append((x,y))
 
         return np.array(pts, np.int32)
 
@@ -60,12 +61,14 @@ class LaneLine(object):
 
     def detect_left(self,img):
         h,w = img.shape
-        return self.detect_at(img, w * 0.25)
+        x = (w * 11) // 32
+        return self.detect_at(img, x)
 
 
     def detect_right(self,img):
         h,w = img.shape
-        return self.detect_at(img, w * 0.75)
+        x = w - (w * 11) // 32
+        return self.detect_at(img, x)
 
 
     def detect_at(self,img, x):
@@ -78,8 +81,8 @@ class LaneLine(object):
         else:
             self.peaks = []
             h,w = img.shape
-            x1 = int(x - w/8)
-            x2 = int(x + w/8)
+            x1 = int(x - w/16)
+            x2 = int(x + w/16)
             histogram = np.sum(img[int(img.shape[0]/2):,x1:x2], axis=0)
 
             start_x = LaneLine.find_peak(histogram)

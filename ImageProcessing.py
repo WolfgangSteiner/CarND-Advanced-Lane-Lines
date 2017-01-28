@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 
-def perspective_transform(img,scale=1):
+def perspective_transform(img,scale=1,dst_margin_rel=11.0/32.0):
     h,w = img.shape[0:2]
     factor = w / 1280
 
@@ -18,13 +18,12 @@ def perspective_transform(img,scale=1):
     #x11 = int(565 * factor)
     #x12 = int(717 * factor)
 
-
     y2  = int(720 * factor)
     x21 = int(216 * factor)
     x22 = int(1092 * factor)
     dst_width = int(w  / scale)
     dst_height = int(h  / scale)
-    dst_margin = dst_width // 4
+    dst_margin = int(dst_width * dst_margin_rel)
     src = np.array([[x11,y1], [x12,y1], [x22,y2], [x21,y2]], np.float32)
     dst = np.array([[dst_margin,0], [dst_width-dst_margin,0], [dst_width-dst_margin,dst_height], [dst_margin,dst_height]], np.float32)
     M = cv2.getPerspectiveTransform(src, dst)

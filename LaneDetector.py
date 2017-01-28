@@ -10,10 +10,17 @@ class LaneDetector(object):
         self.right_lane_line = LaneLine()
         self.scale = 4
         self.pipeline = pipeline
+        self.frame_size = None
+        # relative distance of left/right lane line from
+        # left/right edge of bird's eye view
+        self.dst_margin_rel = 11.0/32.0
+        self.dst_margin_abs = None
 
 
     def process(self, frame):
-        self.warped_frame, self.M_inv = perspective_transform(frame,self.scale)
+        self.frame_size = frame.shape[0:2]
+        self.dst_margin_abs = int(self.frame_size[1] * self.dst_margin_rel)
+        self.warped_frame, self.M_inv = perspective_transform(frame,self.scale,self.dst_margin_rel)
         self.detection_input = self.pipeline.process(self.warped_frame)
 
         self.left_lane_line.detect_left(self.detection_input)
@@ -32,10 +39,10 @@ class LaneDetector(object):
 
         self.fill_lane_area(composite_img)
 
-        if len(self.left_lane_line.best_fit):
+        if self.left_lane_line.has_good_fit():
             self.draw_lane_line(composite_img, self.left_lane_line)
 
-        if len(self.right_lane_line.best_fit):
+        if self.right_lane_line.has_good_fit():
             self.draw_lane_line(composite_img, self.right_lane_line)
 
         transformed_composite_img = inv_perspective_transform(composite_img, self.M_inv, self.scale)
@@ -50,13 +57,29 @@ class LaneDetector(object):
 
 
 
+    def calc_radius(self):
+        # Define conversions in x and y from pixels space to meters
+        ym_per_pix = 30/720 # meters per pixel in y dimension
+        xm_per_pix = 3.7/(self.frame_size) # meters per pixel in x dimension
+
+        # Fit new polynomials to x,y in world space
+        left_fit_cr = np.polyfit(ploty*ym_per_pix, leftx*xm_per_pix, 2)
+        right_fit_cr = np.polyfit(ploty*ym_per_pix, rightx*xm_per_pix, 2)
+        # Calculate the new radii of curvature
+        left_curverad = ((1 + (2*left_fit_cr[0]*y_eval*ym_per_pix + left_fit_cr[1])**2)**1.5) / np.absolute(2*left_fit_cr[0])
+        right_curverad = ((1 + (2*right_fit_cr[0]*y_eval*ym_per_pix + right_fit_cr[1])**2)**1.5) / np.absolute(2*right_fit_cr[0])
+        # Now our radius of curvature is in meters
+        print(left_curverad, 'm', right_curverad, 'm')
+        # Example values: 632.1 m    626.2 m
+
 
     def draw_lane_line(self,img,lane_line):
         h,w = img.shape[0:2]
         pts = []
         coords = lane_line.calc_interpolated_line_points(h)
-        thickness = max(1, 4 / self.scale)
-        cv2.polylines(img, [coords], isClosed=False, color=color.red, thickness=thickness)
+        if coords is not None:
+            thickness = max(1, 4 / self.scale)
+            cv2.polylines(img, [coords], isClosed=False, color=color.red, thickness=thickness)
 
 
     def fill_lane_area(self, img):

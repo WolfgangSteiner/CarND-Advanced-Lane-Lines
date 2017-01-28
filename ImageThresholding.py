@@ -27,7 +27,7 @@ def split_hls(img):
     return split_channels(bgr2hls(img))
 
 
-def combine_hls(h,l,s):
+def join_hls(h,l,s):
     return hls2bgr(combine_channels(h,l,s))
 
 
@@ -43,12 +43,11 @@ def split_yuv(img):
     return split_channels(bgr2yuv(img))
 
 
+def join_yuv(y,u,v):
+    return yuv2bgr(combine_channels(y,u,v))
+
 def split_hsv(img):
     return split_channels(bgr2hsv(img))
-
-
-def combine_hls(h,l,s):
-    return hls2bgr(np.stack((h,l,s),axis=2))
 
 
 def split_channels(img):
@@ -102,7 +101,7 @@ def equalize_adapthist_channel(*args, kernel_size=None, clip_limit=0.01, nbins=2
             kernel_size = [h//kernel_size[0], w//kernel_size[1]]
 
         c_eq = equalize_adapthist(c, kernel_size=None, clip_limit=clip_limit, nbins=nbins) * 255.0
-        results.append(c_eq)
+        results.append(c_eq.astype(np.uint8))
 
     if len(results) == 1:
         return results[0]
@@ -192,7 +191,7 @@ def apply_mask(img, mask):
 def equalize(img):
     h,l,s = split_hls(img)
     l = cv2.equalizeHist(l)
-    return combine_hls(h,l,s)
+    return join_hls(h,l,s)
 
 
 def normalize_img(img):
