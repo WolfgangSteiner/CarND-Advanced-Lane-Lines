@@ -130,6 +130,7 @@ for frame in clip.iter_frames():
     frame = scale_img(frame, 0.5)
     new_frame = np.zeros_like(frame)
 
+    pipeline.poll()
     detector.process(frame)
     annotated_frame, warped_annotated_frame, annotated_input_img = detector.annotate(frame)
 
