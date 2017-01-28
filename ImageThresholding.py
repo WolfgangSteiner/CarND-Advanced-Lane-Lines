@@ -63,7 +63,7 @@ def expand_channel(c):
     return np.stack((c,c,c),axis=2).astype(np.uint8)
 
 
-def mask_as_image(m):
+def expand_mask(m):
     return expand_channel(m) * 255
 
 

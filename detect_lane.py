@@ -26,7 +26,7 @@ def draw_lane_points(img, line):
             draw_pixel(img, p, color=color.pink)
 
 
-def mask_as_image(m):
+def expand_mask(m):
     return np.stack((m,m,m),axis=2).astype(np.uint8) * 255
 
 
@@ -65,7 +65,7 @@ def detect_lane(orig_img, enhanced_warped_img, warped_img, M_inv,scale=1):
     annotated_img = cv2.addWeighted(orig_img, 1, transformed_composite_img, 0.3, 0)
     warped_annotated_img = cv2.addWeighted(warped_img, 1, composite_img, 0.3, 0)
 
-    annotated_enhanced_warped_img = mask_as_image(enhanced_warped_img)
+    annotated_enhanced_warped_img = expand_mask(enhanced_warped_img)
     draw_lane_points(annotated_enhanced_warped_img, left)
     draw_lane_points(annotated_enhanced_warped_img, right)
     draw_histogram(annotated_enhanced_warped_img, left)

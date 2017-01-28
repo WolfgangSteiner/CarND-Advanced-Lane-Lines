@@ -58,7 +58,7 @@ class LaneDetector(object):
         annotated_frame = cv2.addWeighted(frame, 1, transformed_composite_img, 0.3, 0)
         warped_annotated_frame = cv2.addWeighted(self.warped_frame, 1, composite_img, 0.3, 0)
 
-        annotated_detection_input = mask_as_image(self.detection_input)
+        annotated_detection_input = expand_mask(self.detection_input)
         self.draw_lane_points_and_histogram(annotated_detection_input)
         self.draw_lane_points_and_histogram(warped_annotated_frame)
 
