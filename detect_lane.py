@@ -33,7 +33,7 @@ def expand_mask(m):
 def draw_lane_line(img,lane_line,scale=1):
     h,w = img.shape[0:2]
     pts = []
-    coords = lane_line.calc_interpolated_line_points(h)
+    coords = lane_line.interpolate_line_points(h)
     thickness = max(1, 4 / scale)
     cv2.polylines(img, [coords], isClosed=False, color=color.red, thickness=thickness)
 
@@ -41,8 +41,8 @@ def draw_lane_line(img,lane_line,scale=1):
 def fill_lane_area(img, left, right):
     h,w = img.shape[0:2]
     pts = []
-    left_pts = left.calc_interpolated_line_points(h)
-    right_pts = right.calc_interpolated_line_points(h)
+    left_pts = left.interpolate_line_points(h)
+    right_pts = right.interpolate_line_points(h)
     if len(left_pts) and len(right_pts):
         coords = np.stack((left_pts, right_pts[::-1,:]), axis=0).astype(np.int32).reshape((-1,2))
         cv2.fillPoly(img, [coords], color.green)

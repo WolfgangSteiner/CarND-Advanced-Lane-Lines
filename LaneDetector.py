@@ -25,18 +25,35 @@ class LaneDetector(object):
             self.frame_size = np.array(frame.shape[0:2])
             self.input_frame_size = self.frame_size / self.scale
             self.dst_margin_abs = int(self.input_frame_size[1] * self.dst_margin_rel)
-            self.ym_per_px = 21.0 / self.input_frame_size[0] # meters per pixel in y dimension
-            self.xm_per_px = 3.7 / (self.input_frame_size[1] - 2.0 * self.dst_margin_abs) # meters per pixel in x dimension
-            print("xm,ym", self.xm_per_px, self.ym_per_px)
-            self.left_lane_line.initialize(self.input_frame_size, self.xm_per_px, self.ym_per_px)
-            self.right_lane_line.initialize(self.input_frame_size, self.xm_per_px, self.ym_per_px)
+
+            # meters per pixel in y dimension
+            self.ym_per_px = 21.0 / self.input_frame_size[0]
+
+            # meters per pixel in x dimension
+            self.xm_per_px = 3.7 / (self.input_frame_size[1] - 2.0 * self.dst_margin_abs)
+
+            # anchor point for lane detection
+            x_anchor_left = self.dst_margin_abs
+            x_anchor_right = self.input_frame_size[1] - self.dst_margin_abs
+
+
+            self.left_lane_line.initialize(
+                self.input_frame_size,
+                x_anchor_left,
+                self.xm_per_px, self.ym_per_px)
+
+            self.right_lane_line.initialize(
+                self.input_frame_size,
+                x_anchor_right,
+                self.xm_per_px, self.ym_per_px)
+
             self.is_initialized = True
 
         self.warped_frame, self.M_inv = perspective_transform(frame,self.scale,self.dst_margin_rel)
         self.detection_input = self.pipeline.process(self.warped_frame)
 
-        self.left_lane_line.detect_left(self.detection_input)
-        self.right_lane_line.detect_right(self.detection_input)
+        self.left_lane_line.fit_lane_line(self.detection_input)
+        self.right_lane_line.fit_lane_line(self.detection_input)
 
 
     def draw_lane_points_and_histogram(self, img):
@@ -96,7 +113,7 @@ class LaneDetector(object):
     def draw_lane_line(self,img,lane_line):
         h,w = img.shape[0:2]
         pts = []
-        coords = lane_line.calc_interpolated_line_points(h)
+        coords = lane_line.interpolate_line_points(h)
         if coords is not None:
             thickness = max(1, 4 / self.scale)
             cv2.polylines(img, [coords], isClosed=False, color=color.red, thickness=thickness)
@@ -106,8 +123,8 @@ class LaneDetector(object):
     def fill_lane_area(self, img):
         h,w = img.shape[0:2]
         pts = []
-        left_pts = self.left_lane_line.calc_interpolated_line_points(h)
-        right_pts = self.right_lane_line.calc_interpolated_line_points(h)
+        left_pts = self.left_lane_line.interpolate_line_points(h)
+        right_pts = self.right_lane_line.interpolate_line_points(h)
         if len(left_pts) and len(right_pts):
             coords = np.stack((left_pts, right_pts[::-1,:]), axis=0).astype(np.int32).reshape((-1,2))
             cv2.fillPoly(img, [coords], color.green)

@@ -31,18 +31,13 @@ class LaneLine(object):
 
         self.peaks = None
 
-        # conversion from pixels to meters:
-        self.xm_per_px = None
-        self.ym_per_px = None
-
-        # conversion factors for poly coefficients
+        # conversion factors for poly coefficients from pixels to meters
         self.pconv = np.ones(3)
 
 
-    def initialize(self, frame_size, xm_per_px, ym_per_px):
+    def initialize(self, frame_size, x_anchor, xm_per_px, ym_per_px):
         self.frame_size = frame_size
-        self.xm_per_px = xm_per_px
-        self.ym_per_px = ym_per_px
+        self.x_anchor = x_anchor
         self.pconv[0] = xm_per_px
         self.pconv[1] = xm_per_px / ym_per_px
         self.pconv[2] = xm_per_px / ym_per_px**2
@@ -52,22 +47,19 @@ class LaneLine(object):
         return self.best_fit is not None and len(self.best_fit) == 3
 
 
-    def calc_interpolated_line_points(self, h):
-        pts = []
-        if self.has_good_fit():
-            for y in np.arange(0,h+1,h/16):
-                x = poly.polyval(y,self.best_fit)
-                pts.append((x,h-y))
-
-        return np.array(pts, np.int32)
+    def interpolate_line_points(self, h):
+        y = np.arange(0,h+1,h/16)
+        x = poly.polyval(y,self.best_fit)
+        return np.stack((x,h - y), axis=1).astype(np.int32)
 
 
     def detect(self, img, start_x):
         if not start_x is None:
-            self.lane_points = LaneLine.sliding_window(img, start_x, self.best_fit)
+            lane_x,lane_y = self.sliding_window(img, start_x, self.best_fit)
+            self.lane_points = np.stack((lane_x,lane_y),axis=1)
 
             if len(self.lane_points) > 3:
-                self.current_fit = LaneLine.fit_quadratic(self.lane_points)
+                self.current_fit = LaneLine.fit_quadratic(lane_x, lane_y)
                 #print(self.current_fit)
 
         else:
@@ -78,32 +70,19 @@ class LaneLine(object):
         self.update_polynomial()
 
 
-    def detect_left(self,img):
+    def fit_lane_line(self,img):
         h,w = img.shape
-        x = (w * 11) // 32
-        return self.detect_at(img, x)
-
-
-    def detect_right(self,img):
-        h,w = img.shape
-        x = w - (w * 11) // 32
-        return self.detect_at(img, x)
-
-
-    def detect_at(self,img, x):
-        h,w = img.shape
-        self.start_x = None
+        self.peaks = []
 
         if False and self.has_good_fit():
-            self.start_x = self.best_fit[0]
+            start_x = self.best_fit[0]
             self.peaks = [start_x]
             self.histogram = None
         else:
-            self.peaks = []
+            x = self.x_anchor
             x1 = int(x - w/8)
             x2 = int(x + w/8)
             histogram = np.sum(img[int(img.shape[0]/2):,x1:x2], axis=0)
-
             start_x = LaneLine.find_peak(histogram)
 
             if start_x != None:
@@ -112,11 +91,6 @@ class LaneLine(object):
                 y_coords = h - histogram
                 self.histogram = np.stack((x_coords,y_coords),axis=1).astype(np.int32)
                 self.peaks = [np.array((start_x+x1,y_coords[start_x]), np.int32)]
-
-
-        if self.start_x == None and self.has_good_fit():
-            #print(self.best_fit)
-            self.start_x = self.best_fit[2]
 
         if self.start_x != None:
             self.detect(img, self.start_x)
@@ -155,8 +129,8 @@ class LaneLine(object):
 
 
     @staticmethod
-    def fit_quadratic(array):
-        return poly.polyfit(array[:,1],array[:,0],2)
+    def fit_quadratic(lane_x, lane_y):
+        return poly.polyfit(lane_y,lane_x,2)
 
 
     @staticmethod
@@ -190,8 +164,7 @@ class LaneLine(object):
                 draw_pixel(img, (x,h-y-1), color=color.pink)
 
 
-    @staticmethod
-    def sliding_window(img, start_x, best_fit):
+    def sliding_window(self, img, start_x, best_fit):
         h,w = img.shape
         delta_y = h // 16
 
@@ -203,40 +176,27 @@ class LaneLine(object):
         result = []
         y = h
         x = start_x
-        last_x = None
-        last_y = None
-        last_dx = None
+        lane_x = []
+        lane_y = []
 
-        dx = 0
-        ddx = 0
-        #result.append((start_x, h-1))
         while y > 0:
 #            if best_fit is not None:
 #                x = np.polyval(best_fit, y)
             x1 = int(max(0,x - delta_x / 2))
             x2 = x1 + delta_x
-            histogram = np.sum(img[y-delta_y:y, x1:x2], axis=0)
-            peak = LaneLine.find_peak(histogram)
-            if peak is not None:
-                x = peak + x1
-                result.append((x,h-y))
+            y1 = y - delta_y
+            y2 = y
+            window = img[y1:y2,x1:x2]
+            nonzero = window.nonzero()
+            nonzeroy = np.array(nonzero[0])
+            nonzerox = np.array(nonzero[1])
 
-                if last_x is not None and last_y is not None:
-                    dx = (last_x - x) / (last_y - y)
+            if len(nonzerox > 50):
+                x = np.int(nonzerox.mean() + x1)
 
-                if last_dx is not None:
-                    ddx = (last_dx - dx) /  (last_y - y)
-
-                if last_x is not None:
-                    last_dx = dx
-
-                last_x = x
-                last_y = y
-
-            #elif dx is not None:
-        #        x += dx
-        #        dx += ddx
+            lane_x.append(nonzerox + x1)
+            lane_y.append(nonzeroy + y1)
 
             y -= delta_y
 
-        return np.array(result)
+        return np.concatenate(lane_x), h - np.concatenate(lane_y)
