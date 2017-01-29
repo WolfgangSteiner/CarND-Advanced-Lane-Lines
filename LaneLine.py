@@ -67,16 +67,28 @@ class LaneLine(object):
             self.current_fit = None
         #print(line.lane_points)
 
-        self.update_polynomial()
-
 
     def fit_lane_line(self,img):
         h,w = img.shape
         self.peaks = []
 
-        if False and self.has_good_fit():
-            start_x = self.best_fit[0]
-            self.peaks = [start_x]
+        if self.has_good_fit():
+            nonzero = img.nonzero()
+            nonzeroy = np.array(nonzero[0])
+            nonzerox = np.array(nonzero[1])
+
+            margin = w // 16
+            x_poly = poly.polyval(h - nonzeroy, self.best_fit)
+            left_edge = x_poly - margin // 2
+            right_edge = x_poly + margin // 2
+
+            ids = ((nonzerox >= left_edge) & (nonzerox <= right_edge)).nonzero()[0]
+            lane_x = nonzerox[ids]
+            lane_y = h - nonzeroy[ids]
+            self.current_fit = LaneLine.fit_quadratic(lane_x, lane_y)
+            self.lane_points = np.stack((lane_x,lane_y),axis=1)
+
+            self.peaks = []
             self.histogram = None
         else:
             x = self.x_anchor
@@ -92,8 +104,10 @@ class LaneLine(object):
                 self.histogram = np.stack((x_coords,y_coords),axis=1).astype(np.int32)
                 self.peaks = [np.array((start_x+x1,y_coords[start_x]), np.int32)]
 
-        if self.start_x != None:
-            self.detect(img, self.start_x)
+            if self.start_x != None:
+                self.detect(img, self.start_x)
+
+        self.update_polynomial()
 
 
     def calc_radius(self):
@@ -166,26 +180,21 @@ class LaneLine(object):
 
     def sliding_window(self, img, start_x, best_fit):
         h,w = img.shape
+
         delta_y = h // 16
+        delta_x = w // 16
 
-        if best_fit is not None:
-            delta_x = w // 8
-        else:
-            delta_x = w // 8
-
-        result = []
-        y = h
-        x = start_x
         lane_x = []
         lane_y = []
 
+        y = h
+        x = start_x
+
         while y > 0:
-#            if best_fit is not None:
-#                x = np.polyval(best_fit, y)
-            x1 = int(max(0,x - delta_x / 2))
-            x2 = x1 + delta_x
             y1 = y - delta_y
             y2 = y
+            x1 = int(max(0, x - delta_x / 2))
+            x2 = int(min(w, x1 + delta_x))
             window = img[y1:y2,x1:x2]
             nonzero = window.nonzero()
             nonzeroy = np.array(nonzero[0])
