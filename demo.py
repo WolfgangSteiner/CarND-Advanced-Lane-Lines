@@ -134,8 +134,12 @@ def process_frame(frame):
     put_text(new_frame, "Distance from center: %2.2fm %s"  % (abs(d), pos_text), (0,35))
 
     counter += 1
-    #new_frame = scale_img(new_frame, 2.0)
-    return bgr2rgb(new_frame)
+    new_frame = scale_img(new_frame, 2.0)
+
+    if args.render:
+        new_frame = bgr2rgb(new_frame)
+
+    return new_frame
 
 
 
