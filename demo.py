@@ -67,10 +67,8 @@ def plot_intermediates(target_frame, pipeline, scale=1):
         if img is not None:
             scale_and_paste(target_frame, img, (x_pos, y_pos), factor=0.125*scale, title=title)
 
-
+frame_rate = 25
 parser = argparse.ArgumentParser()
-#parser.add_argument('model')
-#parser.add_argument('test_data')
 parser.add_argument('-1', action="store_const", dest="video_file", const="project")
 parser.add_argument('-2', action="store_const", dest="video_file", const="challenge")
 parser.add_argument('-3', action="store_const", dest="video_file", const="harder_challenge")
@@ -85,12 +83,12 @@ if args.video_file == None:
 
 if args.t1 == None:
     if args.video_file == "project":
-        args.t1 = 9 * 60
+        args.t1 = 20 * frame_rate
     else:
         args.t1 = 0
 else:
     t_array = args.t1.split(".")
-    args.t1 = int(t_array[0]) * 60
+    args.t1 = int(t_array[0]) * frame_rate
     if len(t_array) == 2:
         args.t1 += int(t_array[1])
 
@@ -98,12 +96,6 @@ args.video_file += "_video.mp4"
 
 pipeline = YUVPipeline()
 detector = LaneDetector(pipeline)
-
-counter = 0
-frame_skip = 1
-start_frame = args.t1
-scale = 4
-
 
 def process_frame(frame):
     global counter
@@ -118,7 +110,7 @@ def process_frame(frame):
     detector.process(frame)
     annotated_frame, warped_annotated_frame, annotated_input_img = detector.annotate(frame)
     R_left, R_right = detector.calc_radius()
-    d = detector.calc_distance_from_center()
+    d,w = detector.calc_distance_from_center()
 
     scale_and_paste(new_frame, annotated_frame, (0,0), factor=0.75)
     scale_and_paste(new_frame, detector.warped_frame, (0,3), factor=scale*0.25)
@@ -127,7 +119,7 @@ def process_frame(frame):
 
     plot_intermediates(new_frame, pipeline, scale=scale)
 
-    put_text(new_frame, "%02d.%d" % (counter//60,counter%60), (0,0))
+    put_text(new_frame, "%02d.%d" % (counter//frame_rate,counter%frame_rate), (0,0))
     put_text(new_frame, "R1 = %5.2fm  R2 = %5.2fm" % (R_left, R_right), (0,20))
 
     pos_text = "to the " + ("left" if d <= 0 else "right")
@@ -142,8 +134,12 @@ def process_frame(frame):
     return new_frame
 
 
-
 clip = VideoFileClip(args.video_file)
+counter = 0
+frame_skip = 1
+start_frame = args.t1
+scale = 4
+detector.scale = scale
 
 if args.render:
     out_file_name = args.video_file.split(".")[0] + "_annotated.mp4"
@@ -151,8 +147,8 @@ if args.render:
     annotated_clip.write_videofile(out_file_name, audio=False)
 else:
     for frame in clip.iter_frames():
-        counter += 1
-        if counter % frame_skip or counter < start_frame:
+        if (counter % frame_skip) or (counter < start_frame):
+            counter += 1
             continue
 
         new_frame = process_frame(frame)
