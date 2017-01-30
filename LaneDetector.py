@@ -115,7 +115,7 @@ class LaneDetector(object):
         pts = []
         coords = lane_line.interpolate_line_points(h)
         if coords is not None:
-            thickness = max(1, 4 / self.scale)
+            thickness = max(1, int(4 / self.scale))
             cv2.polylines(img, [coords], isClosed=False, color=color.red, thickness=thickness)
 
 
