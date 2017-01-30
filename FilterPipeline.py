@@ -30,7 +30,7 @@ class YUVPipeline(FilterPipeline):
         self.y_u_min = MidiControl(self, "y_u_min", 71, value=100)
         self.y_v_max = MidiControl(self, "y_v_max", 72, value=140)
 
-        self.w_y_min = MidiControl(self, "w_y_min", 73, value=180)
+        self.w_y_min = MidiControl(self, "w_y_min", 73, value=200)
         self.w_uv_max = MidiControl(self, "w_uv_max", 105, value=32)
 
         self.mag_y_min = MidiControl(self, "mag_y_min", 87, value=16)
@@ -73,9 +73,7 @@ class YUVPipeline(FilterPipeline):
         mag_y_eq = mag_grad(y, self.mag_y_min.value, self.mag_y_max.value, ksize=self.mag_y_ksize.value)
         mag_u_eq = mag_grad(u_eq, self.mag_u_min.value, self.mag_u_max.value, ksize=self.mag_u_ksize.value)
         mag_v_eq = mag_grad(v_eq, self.mag_v_min.value, self.mag_v_max.value, ksize=self.mag_v_ksize.value)
-
         w_mag_y = AND(white,mag_y_eq)
-
 
         for ch in "y,u,v".split(","):
             self.add_intermediate_channel(eval(ch),ch)
@@ -96,7 +94,7 @@ class YUVPipeline(FilterPipeline):
         for ch in "mag_y_eq,mag_u_eq,mag_v_eq".split(","):
             self.add_intermediate_mask(eval(ch),ch)
 
-        return OR(white, yellow)
+        return OR(w_mag_y, yellow)
 
 
 class HSVPipeline(FilterPipeline):

@@ -17,6 +17,7 @@ class MidiControl(object):
             self.max = len(self.allowed_values) - 1
         midi_manager.register_control(self)
 
+
     def set_value(self, value):
         new_value = value / 127.0 * (self.max - self.min) + self.min
 

@@ -18,6 +18,8 @@ class LaneDetector(object):
         self.is_initialized = False
         self.last_lane_width = 3.7
         self.last_distance_from_center = None
+        self.current_distance_from_center = None
+        self.current_lane_width = None
 
 
     def process(self, frame):
@@ -56,11 +58,18 @@ class LaneDetector(object):
         self.right_lane_line.fit_lane_line(self.detection_input)
 
 
-    def draw_lane_points_and_histogram(self, img):
+        #new_pos, new_width = calc_position_and_lane_width()
+
+
+
+    def annotated_lane_lines(self, img):
         self.left_lane_line.draw_lane_points(img)
         self.right_lane_line.draw_lane_points(img)
         self.left_lane_line.draw_histogram(img)
         self.right_lane_line.draw_histogram(img)
+        img = self.left_lane_line.annotate_poly_fit(img)
+        img = self.right_lane_line.annotate_poly_fit(img)
+        return img
 
 
     def annotate(self, frame):
@@ -79,35 +88,39 @@ class LaneDetector(object):
         warped_annotated_frame = cv2.addWeighted(self.warped_frame, 1, composite_img, 0.3, 0)
 
         annotated_detection_input = expand_mask(self.detection_input)
-        self.draw_lane_points_and_histogram(annotated_detection_input)
-        self.draw_lane_points_and_histogram(warped_annotated_frame)
+        annotated_detection_input = self.annotated_lane_lines(annotated_detection_input)
+        warped_annotated_frame = self.annotated_lane_lines(warped_annotated_frame)
 
         return annotated_frame, warped_annotated_frame, annotated_detection_input
 
 
-    def calc_radius(self):
-        R_left = self.left_lane_line.calc_radius()
-        R_right = self.right_lane_line.calc_radius()
+    def get_radii(self):
+        R_left = self.left_lane_line.current_radius_in_meters
+        R_right = self.right_lane_line.current_radius_in_meters
         return R_left, R_right
 
 
     def calc_distance_from_center(self):
+    #def calc_position_and_lane_width(self):
         d_left = self.left_lane_line.calc_distance_from_center()
         d_right = self.right_lane_line.calc_distance_from_center()
 
         if d_left == None and d_right == None:
             d = self.last_distance_from_center
+            w = None
         elif d_left == None:
             d = self.last_lane_width / 2 - d_right
+            w = None
         elif d_right == None:
             d = self.last_lane_width / 2 + d_left
+            w = None
         else:
             w = d_right - d_left
-            d = 0.5 * (w - d_right + d_left)
+            d = w/2 - d_right
             self.last_lane_width = w
 
         self.last_distance_from_center = d
-        return d
+        return d,w
 
 
     def draw_lane_line(self,img,lane_line):
@@ -117,7 +130,6 @@ class LaneDetector(object):
         if coords is not None:
             thickness = max(1, int(4 / self.scale))
             cv2.polylines(img, [coords], isClosed=False, color=color.red, thickness=thickness)
-
 
 
     def fill_lane_area(self, img):

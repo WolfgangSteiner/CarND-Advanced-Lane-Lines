@@ -7,3 +7,4 @@ class color:
     blue = (255,0,0)
     light_blue = (255,127,127)
     white = (255,255,255)
+    black = (0,0,0)

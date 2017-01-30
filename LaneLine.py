@@ -1,7 +1,7 @@
 import numpy as np
-from scipy.signal import find_peaks_cwt
 from Drawing import *
-import numpy.polynomial.polynomial as poly
+from lanemath import *
+from collections import deque
 
 # Define a class to receive the characteristics of each line detection
 class LaneLine(object):
@@ -15,15 +15,26 @@ class LaneLine(object):
         #polynomial coefficients averaged over the last n iterations
         self.best_fit = None
         #polynomial coefficients averaged over the last n iterations in meters
-        self.best_fit_meters = None
+        self.best_fit_in_meters = None
         #polynomial coefficients for the most recent fit
         self.current_fit = [np.array([False])]
+        #polynomial coefficients for the most recent fit in meters
+        self.current_fit_in_meters = [np.array([False])]
+        #polynomial coefficients for the last good fit in meters
+        self.last_good_fit_in_meters = None
+
+        self.fit_queue = deque()
+
         #radius of curvature of the line in some units
         self.radius_of_curvature = None
         #distance in meters of vehicle center from the line
         self.line_base_pos = None
-        #difference in fit coefficients between last and new fits
-        self.diffs = np.array([0,0,0], dtype='float')
+        #relative difference in fit coefficients between last and new fits
+        self.rel_diffs = np.array([0,0,0], dtype='float')
+        #absolute difference in fit coefficients between last and new fits
+        self.abs_diffs = np.array([0,0,0], dtype='float')
+
+
         #x values for detected line points
         self.lane_points = None
 
@@ -34,9 +45,14 @@ class LaneLine(object):
         # conversion factors for poly coefficients from pixels to meters
         self.pconv = np.ones(3)
 
+        self.sliding_window_coords = []
+
+        self.frames_without_good_fit = 0
+
 
     def initialize(self, frame_size, x_anchor, xm_per_px, ym_per_px):
         self.frame_size = frame_size
+        self.fit_margin = self.frame_size[1] // 8
         self.x_anchor = x_anchor
         self.pconv[0] = xm_per_px
         self.pconv[1] = xm_per_px / ym_per_px
@@ -59,7 +75,7 @@ class LaneLine(object):
             self.lane_points = np.stack((lane_x,lane_y),axis=1)
 
             if len(self.lane_points) > 3:
-                self.current_fit = LaneLine.fit_quadratic(lane_x, lane_y)
+                self.current_fit = fit_quadratic(lane_x, lane_y)
                 #print(self.current_fit)
 
         else:
@@ -71,31 +87,41 @@ class LaneLine(object):
     def fit_lane_line(self,img):
         h,w = img.shape
         self.peaks = []
+        self.sliding_window_coords = []
+        self.detected = False
+        self.current_fit = None
+        self.current_fit_in_meters = None
 
         if self.has_good_fit():
             nonzero = img.nonzero()
             nonzeroy = np.array(nonzero[0])
             nonzerox = np.array(nonzero[1])
 
-            margin = w // 16
             x_poly = poly.polyval(h - nonzeroy, self.best_fit)
-            left_edge = x_poly - margin // 2
-            right_edge = x_poly + margin // 2
+            left_edge = x_poly - self.fit_margin // 2
+            right_edge = x_poly + self.fit_margin // 2
 
             ids = ((nonzerox >= left_edge) & (nonzerox <= right_edge)).nonzero()[0]
             lane_x = nonzerox[ids]
             lane_y = h - nonzeroy[ids]
-            self.current_fit = LaneLine.fit_quadratic(lane_x, lane_y)
-            self.lane_points = np.stack((lane_x,lane_y),axis=1)
+            if len(lane_x) < 6:
+                self.current_fit = None
+            else:
+                self.current_fit = fit_quadratic(lane_x, lane_y)
+                self.process_current_fit()
 
+            self.lane_points = np.stack((lane_x,lane_y),axis=1)
+            self.detected = self.is_current_fit_good()
             self.peaks = []
             self.histogram = None
-        else:
+
+
+        if not self.detected:
             x = self.x_anchor
             x1 = int(x - w/8)
             x2 = int(x + w/8)
             histogram = np.sum(img[int(img.shape[0]/2):,x1:x2], axis=0)
-            start_x = LaneLine.find_peak(histogram)
+            start_x = find_peak(histogram)
 
             if start_x != None:
                 self.start_x = start_x + x1
@@ -107,60 +133,84 @@ class LaneLine(object):
             if self.start_x != None:
                 self.detect(img, self.start_x)
 
+                if self.current_fit is not None:
+                    self.process_current_fit()
+
+            self.detected = self.is_current_fit_good()
+
+        if not self.detected:
+            self.current_fit = None
+            self.current_fit_in_meters = None
+
+
         self.update_polynomial()
 
 
-    def calc_radius(self):
-        if self.has_good_fit():
-            A = self.best_fit[2] * self.pconv[2]
-            B = self.best_fit[1] * self.pconv[1]
-            R = pow(1 + B**2, 1.5) / max(1e-5, abs(A))
-            return R
-        else:
-            return NULL
+    def process_current_fit(self):
+        assert self.current_fit is not None
+        self.current_fit_in_meters = self.current_fit * self.pconv
+        self.current_radius_in_meters = calc_radius(self.current_fit_in_meters)
+
+        if self.last_good_fit_in_meters is not None:
+            self.rel_diffs = rel_change(self.current_fit_in_meters, self.last_good_fit_in_meters)
+            self.abs_diffs = abs_change(self.current_fit_in_meters, self.last_good_fit_in_meters)
 
 
     def calc_distance_from_center(self):
         if self.has_good_fit():
             d_in_px = self.best_fit[0] - self.frame_size[1] / 2
             d_in_m = d_in_px * self.pconv[0]
-            #print(d_in_m)
             return d_in_m
         else:
             return None
 
 
-    def update_polynomial(self):
-        a = 0.5
-        b = 1.0 - a
+    def fit_in_meters(fit):
+        return fit * self.pconv
+
+
+    def is_current_fit_good(self):
         if self.current_fit is None:
-            return
-        elif not self.has_good_fit():
-            self.best_fit = self.current_fit
+            return False
+        elif self.last_good_fit_in_meters is None:
+            return True
         else:
-            for i in range(len(self.best_fit)):
-                self.best_fit[i] = a * self.current_fit[i] + b * self.best_fit[i]
+            if self.abs_diffs[0] > 0.1:
+                return False
+
+            if self.rel_diffs[1] > 0.1:
+                return False
+
+            if self.rel_diffs[2] > 0.1:
+                return False
+
+        return True
 
 
-    @staticmethod
-    def fit_quadratic(lane_x, lane_y):
-        return poly.polyfit(lane_y,lane_x,2)
+    def update_polynomial(self):
+        if self.current_fit is None:
+            self.frames_without_good_fit += 1
+            return
+
+        elif not self.is_current_fit_good():
+            self.frames_without_good_fit += 1
+            return
+
+        elif self.best_fit == None:
+            self.best_fit = self.current_fit
+
+        else:
+            self.do_update_polynomial(self.current_fit)
+
+        self.frames_without_good_fit = 0
+        self.best_fit_in_meters = self.best_fit * self.pconv
+        self.last_good_fit_in_meters = self.current_fit * self.pconv
 
 
-    @staticmethod
-    def find_peak(histogram):
-        w = len(histogram)
-
-        if w == 0 or histogram.max() == 0:
-            return None
-
-        peaks = find_peaks_cwt(histogram, np.arange(w,4*w))
-
-        if len(peaks) == 0:
-            return None
-
-        peak_idx = histogram[peaks].argmax()
-        return peaks[peak_idx]
+    def do_update_polynomial(self, p):
+        a = 0.25
+        b = 1.0 - a
+        self.best_fit = a * p + b * self.best_fit
 
 
     def draw_histogram(self, img):
@@ -182,30 +232,77 @@ class LaneLine(object):
         h,w = img.shape
 
         delta_y = h // 16
-        delta_x = w // 16
+        delta_x = w // 8
 
         lane_x = []
         lane_y = []
 
         y = h
         x = start_x
+        dy =  delta_y // 2
+        dx = 0.0
+        ddx = 0.0
+        last_ddx = None
+        i = 0
 
         while y > 0:
             y1 = y - delta_y
             y2 = y
             x1 = int(max(0, x - delta_x / 2))
-            x2 = int(min(w, x1 + delta_x))
+            x2 = int(min(w, x + delta_x / 2))
             window = img[y1:y2,x1:x2]
             nonzero = window.nonzero()
             nonzeroy = np.array(nonzero[0])
             nonzerox = np.array(nonzero[1])
 
-            if len(nonzerox > 50):
-                x = np.int(nonzerox.mean() + x1)
+            if len(nonzerox > 10):
+                i += 1
+                new_delta_x_calc = nonzerox.mean() - delta_x // 2
+                new_delta_x_calc = clip_to_range(new_delta_x_calc, -delta_x//4, delta_x//4)
+                new_dx_calc = new_delta_x_calc / delta_y
+                if dx is not None:
+                    new_ddx = (new_dx_calc - dx) / delta_y
+                    new_ddx = clip_to_range(new_ddx, -0.05, 0.05)
+                    new_dx = dx + new_ddx * delta_y
+                    dx = new_dx
+                else:
+                    new_dx = new_dx_calc
+                    dx = new_dx
+
+                x += new_dx * delta_y
+                dx = new_dx
+            elif i > 10:
+                x += dx * delta_y
+                dx += ddx * delta_y
+
 
             lane_x.append(nonzerox + x1)
             lane_y.append(nonzeroy + y1)
+            self.sliding_window_coords.append(((x1,y1),(x2,y2)))
 
-            y -= delta_y
+            y -= dy
 
         return np.concatenate(lane_x), h - np.concatenate(lane_y)
+
+
+    def annotate_poly_fit(self, annotated_img):
+        composite_img = np.zeros_like(annotated_img)
+
+        if len(self.sliding_window_coords):
+            for p1,p2 in self.sliding_window_coords:
+                cv2.rectangle(composite_img, p1, p2, color=color.orange)
+
+        else:
+            h,w = annotated_img.shape[0:2]
+            margin = w // 16
+            y = np.arange(0,h+0.1,1)
+            x = poly.polyval(y, self.best_fit)
+            y = h - y
+            left_edge = x - self.fit_margin // 2
+            right_edge = x + self.fit_margin // 2
+            coords_left = np.transpose(np.stack((left_edge,y), axis=0))
+            coords_right = np.transpose(np.stack((right_edge,y), axis=0))
+            coords = np.concatenate((coords_left, np.flipud(coords_right))).astype(np.int32)
+            cv2.fillPoly(composite_img, [coords], color=color.light_blue)
+
+        return cv2.addWeighted(annotated_img, 1.0, composite_img, 0.3, 0)
