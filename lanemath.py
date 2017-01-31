@@ -45,3 +45,18 @@ def find_peak(histogram):
 
 def clip_to_range(a, l1, l2):
     return min(max(a,l1), l2)
+
+
+class LowpassFilter(object):
+    def __init__(self, A):
+        self.A = A
+        self.B = 1.0 - A
+        self.value = None
+
+    def process(self, x):
+        if self.value == None:
+            self.value = x
+        else:
+            self.value = x * self.A + self.value * self.B
+
+        return self.value

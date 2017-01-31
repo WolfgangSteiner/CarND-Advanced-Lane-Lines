@@ -37,29 +37,6 @@ def scale_and_paste_mask(target_frame, mask, pos, factor=1.0, title=None):
 def scale_and_paste_channel(target_frame, channel, pos, factor=1.0, title=None):
     scale_and_paste(target_frame, expand_channel(channel), pos, factor, title=title)
 
-
-def clip_channel(*imgs, min=0, max=255):
-    result = []
-    for i in imgs:
-        result.append(np.clip(i, min, max))
-
-    if len(result) == 1:
-        return result[0]
-    else:
-        return result
-
-
-def abs_channel(*imgs):
-    result = []
-    for i in imgs:
-        result.append(np.abs(u-v))
-
-    if len(result) == 1:
-        return result[0]
-    else:
-        return result
-
-
 def plot_intermediates(target_frame, pipeline, scale=1):
     for idx,(img,title) in enumerate(pipeline.intermediates):
         x_pos = idx // 8 + 6
@@ -101,47 +78,34 @@ def process_frame(frame):
     global counter
     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
     frame = undistort_image(frame)
-    frame = scale_img(frame, 0.5)
-    new_frame = np.zeros((frame.shape[0],frame.shape[1]//4*5,3),np.uint8)
 
     if not args.render:
         pipeline.poll()
 
     detector.process(frame)
     annotated_frame, warped_annotated_frame, annotated_input_img = detector.annotate(frame)
+
+    if args.render:
+        new_frame = annotated_frame
+    else:
+        new_frame = np.zeros((frame.shape[0],frame.shape[1]//4*5,3),np.uint8)
+        scale_and_paste(new_frame, annotated_frame, (0,0), factor=0.75)
+        scale_and_paste(new_frame, detector.pipeline_input, (0,3), factor=scale*0.25)
+        scale_and_paste(new_frame, annotated_input_img,(1,3), factor=scale*0.25)
+        scale_and_paste(new_frame, warped_annotated_frame, (2,3), factor=scale*0.25)
+        plot_intermediates(new_frame, pipeline, scale=scale)
+
+    #new_frame = scale_img(new_frame, 2.0)
+    h,w = new_frame.shape[0:2]
+    tr = TextRenderer(new_frame)
+    tr.scale=1.0
+
     R_left, R_right = detector.get_radii()
-    d,w = detector.calc_distance_from_center()
+    R_mean = 2.0 / (1/R_left + 1/R_right)
+    d,W = detector.calc_distance_from_center()
 
-    scale_and_paste(new_frame, annotated_frame, (0,0), factor=0.75)
-    scale_and_paste(new_frame, detector.warped_frame, (0,3), factor=scale*0.25)
-    scale_and_paste(new_frame, annotated_input_img,(1,3), factor=scale*0.25)
-    scale_and_paste(new_frame, warped_annotated_frame, (2,3), factor=scale*0.25)
-
-    plot_intermediates(new_frame, pipeline, scale=scale)
-
-
-    new_frame = scale_img(new_frame, 2.0)
-
-    put_text(new_frame, "%02d.%d" % (counter//frame_rate,counter%frame_rate), (0,0), color=color.black)
-    put_text(new_frame, "R1 = %5.2fm  R2 = %5.2fm" % (R_left, R_right), (0,15), color=color.black)
-
-    A_left = detector.left_lane_line.best_fit[2] * detector.left_lane_line.pconv[2]
-    A_right = detector.right_lane_line.best_fit[2] * detector.right_lane_line.pconv[2]
-    put_text(new_frame, "A1 = %f  A2 = %f" % (A_left, A_right), (0,30), color=color.black)
-
-    B_left = detector.left_lane_line.best_fit[1] * detector.left_lane_line.pconv[1]
-    B_right = detector.right_lane_line.best_fit[1] * detector.right_lane_line.pconv[1]
-    put_text(new_frame, "B1 = %f  B2 = %f" % (B_left, B_right), (0,45), color=color.black)
-
-    C_left = detector.left_lane_line.best_fit[0] * detector.left_lane_line.pconv[0]
-    C_right = detector.right_lane_line.best_fit[0] * detector.right_lane_line.pconv[0]
-    put_text(new_frame, "C1 = %f  C2 = %f" % (C_left, C_right), (0,60), color=color.black)
-
-    W = C_right - C_left
-    put_text(new_frame, "W = %f" % (W), (0,75), color=color.black)
-
-    pos_text = "to the " + ("left" if d <= 0 else "right")
-    put_text(new_frame, "Distance from center: %2.2fm %s"  % (abs(d), pos_text), (0,90), color=color.black)
+    tr.put_line("RL=%7.2fm  RR=%7.2fm  R=%7.2fm W=%2.2fm  POS=%2.2fm" % (R_left, R_right, R_mean, W, d))
+    tr.text_at("%02d.%02d" % (counter//frame_rate,counter%frame_rate), (20,h-40))
 
     counter += 1
 
@@ -155,7 +119,7 @@ clip = VideoFileClip(args.video_file)
 counter = 0
 frame_skip = 1
 start_frame = args.t1
-scale = 4
+scale = 8
 detector.scale = scale
 key_wait = args.delay
 

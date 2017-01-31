@@ -26,7 +26,9 @@ class LaneLine(object):
         self.fit_queue = deque()
 
         #radius of curvature of the line in some units
-        self.radius_of_curvature = None
+        self.current_radius_in_meters = None
+        self.inv_radius = LowpassFilter(0.1)
+
         #distance in meters of vehicle center from the line
         self.line_base_pos = None
         #relative difference in fit coefficients between last and new fits
@@ -52,7 +54,7 @@ class LaneLine(object):
 
     def initialize(self, frame_size, x_anchor, xm_per_px, ym_per_px):
         self.frame_size = frame_size
-        self.fit_margin = self.frame_size[1] // 8
+        self.fit_margin = self.frame_size[1] // 16
         self.x_anchor = x_anchor
         self.pconv[0] = xm_per_px
         self.pconv[1] = xm_per_px / ym_per_px
@@ -64,7 +66,9 @@ class LaneLine(object):
 
 
     def interpolate_line_points(self, h):
-        y = np.arange(0,h+1,h/16)
+        if self.best_fit is None:
+            return None
+        y = np.arange(0,h+1,h/32)
         x = poly.polyval(y,self.best_fit)
         return np.stack((x,h - y), axis=1).astype(np.int32)
 
@@ -124,14 +128,14 @@ class LaneLine(object):
             start_x = find_peak(histogram)
 
             if start_x != None:
-                self.start_x = start_x + x1
+                start_x += x1
                 x_coords = np.arange(x1,x2)
                 y_coords = h - histogram
                 self.histogram = np.stack((x_coords,y_coords),axis=1).astype(np.int32)
-                self.peaks = [np.array((start_x+x1,y_coords[start_x]), np.int32)]
+                self.peaks = [np.array((start_x,y_coords[start_x-x1]), np.int32)]
 
-            if self.start_x != None:
-                self.detect(img, self.start_x)
+            if start_x != None:
+                self.detect(img, start_x)
 
                 if self.current_fit is not None:
                     self.process_current_fit()
@@ -150,6 +154,7 @@ class LaneLine(object):
         assert self.current_fit is not None
         self.current_fit_in_meters = self.current_fit * self.pconv
         self.current_radius_in_meters = calc_radius(self.current_fit_in_meters)
+        self.inv_radius.process(1.0 / self.current_radius_in_meters)
 
         if self.last_good_fit_in_meters is not None:
             self.rel_diffs = rel_change(self.current_fit_in_meters, self.last_good_fit_in_meters)
@@ -175,13 +180,13 @@ class LaneLine(object):
         elif self.last_good_fit_in_meters is None:
             return True
         else:
-            if self.abs_diffs[0] > 0.1:
+            if self.abs_diffs[0] > 0.2 * 2:
                 return False
 
-            if self.rel_diffs[1] > 0.1:
+            if self.rel_diffs[1] > 0.15 * 2:
                 return False
 
-            if self.rel_diffs[2] > 0.1:
+            if self.rel_diffs[2] > 0.15 * 2:
                 return False
 
         return True
@@ -208,7 +213,7 @@ class LaneLine(object):
 
 
     def do_update_polynomial(self, p):
-        a = 0.25
+        a = 0.125
         b = 1.0 - a
         self.best_fit = a * p + b * self.best_fit
 
@@ -239,7 +244,7 @@ class LaneLine(object):
 
         y = h
         x = start_x
-        dy =  delta_y // 2
+        dy =  delta_y // 4
         dx = 0.0
         ddx = 0.0
         last_ddx = None
@@ -259,28 +264,13 @@ class LaneLine(object):
                 i += 1
                 new_delta_x_calc = nonzerox.mean() - delta_x // 2
                 new_delta_x_calc = clip_to_range(new_delta_x_calc, -delta_x//4, delta_x//4)
-                new_dx_calc = new_delta_x_calc / delta_y
-                if dx is not None:
-                    new_ddx = (new_dx_calc - dx) / delta_y
-                    new_ddx = clip_to_range(new_ddx, -0.05, 0.05)
-                    new_dx = dx + new_ddx * delta_y
-                    dx = new_dx
-                else:
-                    new_dx = new_dx_calc
-                    dx = new_dx
-
-                x += new_dx * delta_y
-                dx = new_dx
-            elif i > 10:
-                x += dx * delta_y
-                dx += ddx * delta_y
-
+                x += new_delta_x_calc
 
             lane_x.append(nonzerox + x1)
             lane_y.append(nonzeroy + y1)
             self.sliding_window_coords.append(((x1,y1),(x2,y2)))
 
-            y -= dy
+            y -= delta_y
 
         return np.concatenate(lane_x), h - np.concatenate(lane_y)
 
@@ -292,7 +282,7 @@ class LaneLine(object):
             for p1,p2 in self.sliding_window_coords:
                 cv2.rectangle(composite_img, p1, p2, color=color.orange)
 
-        else:
+        elif self.best_fit is not None:
             h,w = annotated_img.shape[0:2]
             margin = w // 16
             y = np.arange(0,h+0.1,1)

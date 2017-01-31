@@ -100,11 +100,11 @@ def equalize_channel(*args):
 def equalize_adapthist_channel(*args, kernel_size=None, clip_limit=0.01, nbins=256):
     results = []
     for c in args:
-        h,w = c[0:2]
-        if not kernel_size is None:
-            kernel_size = [h//kernel_size[0], w//kernel_size[1]]
+        h,w = c.shape[0:2]
+        if kernel_size is not None:
+            kernel_size = [max(1,h//kernel_size[0]), max(1,w//kernel_size[1])]
 
-        c_eq = equalize_adapthist(c, kernel_size=None, clip_limit=clip_limit, nbins=nbins) * 255.0
+        c_eq = equalize_adapthist(c, kernel_size=kernel_size, clip_limit=clip_limit, nbins=nbins) * 255.0
         results.append(c_eq.astype(np.uint8))
 
     if len(results) == 1:
@@ -200,6 +200,10 @@ def equalize(img):
 
 def normalize_img(img):
     return img/np.max(img)
+
+
+def dilate(img, ksize=5):
+    return cv2.dilate(img,np.ones((ksize,ksize)),iterations = 1)
 
 
 def grad_x(img, min_thres, max_thres, ksize=3, ch=1):

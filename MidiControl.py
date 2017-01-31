@@ -6,8 +6,8 @@ import time
 class MidiControl(object):
     def __init__(self, midi_manager, name, control_number, value=0, min=0, max=255, allowed_values=None):
         self.midi_manager = midi_manager
-        self.min = 0
-        self.max = 255
+        self.min = min
+        self.max = max
         self.control_number = control_number
         self.value = value
         self.name = name
