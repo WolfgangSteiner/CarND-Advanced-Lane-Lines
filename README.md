@@ -1,4 +1,4 @@
-## Advanced Lane Finding - Wolfgang Steiner <wolfgang.steiner@gmail.com>
+## Advanced Lane Finding
 
 ### Introduction
 
@@ -35,7 +35,7 @@ transformed into a bird's eye view by a call to ```cv2.warpPerspective```. Some 
 
 ### 3. Computation of a Binary Mask to Identify Lane Line Pixels:
 Pleas refer to the following block diagram of the processing pipeline for
-the different steps taken to derive a binary image for the lane line detection:
+the different steps taken to derive a binary image for the lane line detection. All of the images shown in the block diagram can also be found in the ```output_images``` directory.
 
 ![](fig/pipeline.png)
 
@@ -62,4 +62,9 @@ A similar procedure is followed for creating a yellow mask:
 The result of these operations are then combined by a bitwise OR into the resulting binary input for lane line detection.
 
 
-In this project, your goal is to write a software pipeline to identify the lane boundaries in a video, but the main output or product we want you to create is a detailed writeup of the project.  Check out the [writeup template](https://github.com/udacity/CarND-Advanced-Lane-Lines/blob/master/writeup_template.md) for this project and use it as a starting point for creating your own writeup.  
+### 4. Lane Line Detection and Polynomial Fitting
+The lane line detection and polynomial fitting is handeled by the class ```LaneLine``` defined in ```LaneLine.py```. The class ```LaneDetector``` defined in ```LaneDetector.py``` holds two instances of the ```LaneLine``` class for the left and right lane lines. Each instance has an anchor point that is set to the lower left/right destination coordinates of the perspective transform.
+
+The first detection is achieved using a sliding window algorithm (method ```sliding_window``` called by ```fit_lane_line```): Starting from the anchor point, all the non-zero pixels of the binary input mask, that are contained in the current window are added into a growing list of coordinates. The window is successively moved upwards and is moved sideways by the distance between its center and the computed mean of the contained pixels. This allows the window to follow the curvature of the lane line.
+
+After a pass of the window through the image, the collection of positive pixel coordinates is used to fit a second order polynomial 
