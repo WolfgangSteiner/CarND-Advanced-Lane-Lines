@@ -63,8 +63,19 @@ The result of these operations are then combined by a bitwise OR into the result
 
 
 ### 4. Lane Line Detection and Polynomial Fitting
-The lane line detection and polynomial fitting is handeled by the class ```LaneLine``` defined in ```LaneLine.py```. The class ```LaneDetector``` defined in ```LaneDetector.py``` holds two instances of the ```LaneLine``` class for the left and right lane lines. Each instance has an anchor point that is set to the lower left/right destination coordinates of the perspective transform.
+The lane line detection and polynomial fitting is handeled by the class ```LaneLine``` defined in ```LaneLine.py```. The class ```LaneDetector``` defined in ```LaneDetector.py``` holds two instances of the ```LaneLine``` class for the left and right lane lines. Each instance has an anchor point that is set to the lower left/right destination coordinates of the perspective transform. Lane detection and fitting is coordinated by the method ```LaneLine.fit_laen_line```.
 
-The first detection is achieved using a sliding window algorithm (method ```sliding_window``` called by ```fit_lane_line```): Starting from the anchor point, all the non-zero pixels of the binary input mask, that are contained in the current window are added into a growing list of coordinates. The window is successively moved upwards and is moved sideways by the distance between its center and the computed mean of the contained pixels. This allows the window to follow the curvature of the lane line.
+The first detection is achieved using a sliding window algorithm (method ```LaneLine.perform_sliding_window``` called from ```LaneLine.detect_with_sliding_window```): Starting from the anchor point,  a histogram of a window centered around the anchor point and extending upward to the center of the input frame is computed. The x-coordinate of the highest peak of this histogram is then selected as a starting point for the sliding window algorithm.
 
-After a pass of the window through the image, the collection of positive pixel coordinates is used to fit a second order polynomial 
+All the non-zero pixels of the binary input mask that are contained in the current window are added into a growing list of coordinates. The window is successively moved upwards and is moved sideways by the distance between its center and the computed mean of the contained pixels. This allows the window to follow the curvature of the lane line.
+
+![](fig/sliding_window.png)
+
+After a pass of the window through the image, the collection of encountered positive pixel coordinates is used to fit a second order polynomial (function ```lanemath.fit_quadratic``` called from method ```LaneLine.detect_with_sliding_window```). Every time a fit for the lane line is found and it does not deviate too much from the current best fit (determined by ```LaneLine.is_current_fit_good```) the best fit is updated. This is done by use of a simple low-pass filtering algorithm (```LaneLine.do_update_polynomial```).
+
+When the next frame is processed and a previous "best fit" is present, the sliding window algorithm is bypassed in favor for direct polynomial fitting. This has two advantages: direct fitting is significantly faster and it increases the resilience of the algorithm as the image is searched selectively in the vicinity where the line was present in the last frame.
+
+This algorithm uses the current best fit to select pixels inside of a certain margin ```LaneLine.fit_margin``` around the interpolated coordinates of the
+current best fit.
+
+![](fig/direct_fitting.png)
