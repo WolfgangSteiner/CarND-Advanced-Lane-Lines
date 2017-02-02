@@ -32,9 +32,10 @@ used to calculate the transformation matrix M with the function ```cv2.getPerspe
 transformed into a bird's eye view by a call to ```cv2.warpPerspective```. Some example images for the perspective transform are shown below:
 
 ![](output_images/perspective_transform.png)
+![](output_images/warped_frame.png)
 
 ### 3. Computation of a Binary Mask to Identify Lane Line Pixels:
-Pleas refer to the following block diagram of the processing pipeline for
+Please refer to the following block diagram of the processing pipeline for
 the different steps taken to derive a binary image for the lane line detection. All of the images shown in the block diagram can also be found in the ```output_images``` directory.
 
 ![](fig/pipeline.png)
@@ -61,6 +62,7 @@ A similar procedure is followed for creating a yellow mask:
 
 The result of these operations are then combined by a bitwise OR into the resulting binary input for lane line detection.
 
+![](output_images/detection_input.png)
 
 ### 4. Lane Line Detection and Polynomial Fitting
 The lane line detection and polynomial fitting is handeled by the class ```LaneLine``` defined in ```LaneLine.py```. The class ```LaneDetector``` defined in ```LaneDetector.py``` holds two instances of the ```LaneLine``` class for the left and right lane lines. Each instance has an anchor point that is set to the lower left/right destination coordinates of the perspective transform. Lane detection and fitting is coordinated by the method ```LaneLine.fit_laen_line```.
