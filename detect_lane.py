@@ -1,128 +1,151 @@
+from moviepy.editor import VideoFileClip
 import cv2
-import Common
 import numpy as np
-from calibrate_camera import undistort_image
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
-from scipy.signal import find_peaks_cwt
-from LaneLine import LaneLine
-from ImageProcessing import perspective_transform, inv_perspective_transform
-from ImageThresholding import binarize_img, normalize_img, grad_x, grad_y, mag_grad, dir_grad
+from ImageThresholding import *
+import argparse
 from Color import color
 from Drawing import *
+import Utils
+import time
+from LaneDetector import LaneDetector
+from FilterPipeline import HSVPipeline,YUVPipeline
+from  imageutils import *
 
 
-def draw_histogram(img, line):
-    if not line.histogram is None:
-        h,w = img.shape[0:2]
-        cv2.polylines(img, [line.histogram], isClosed=False, color=(127,255,127))
-        for p in line.peaks:
-            draw_marker(img, p)
+def paste_img(target_img, source_img, pos):
+    h,w = source_img.shape[0:2]
+    target_img[pos[0]:pos[0]+h,pos[1]:pos[1]+w,:] = source_img
 
 
-def draw_lane_points(img, line):
-    if line.lane_points is not None:
-        for p in line.lane_points:
-            draw_pixel(img, p, color=color.pink)
+def scale_and_paste(target_frame, img, pos, factor=1.0, title=None):
+    img = cv2.resize(img,None,fx=factor,fy=factor, interpolation = cv2.INTER_LINEAR)
+    abs_pos = (pos[1] * img.shape[0], pos[0]*img.shape[1])
+    paste_img(target_frame, img, abs_pos)
+    if not title is None:
+        put_text(target_frame, title, (abs_pos[1],abs_pos[0]))
 
 
-def expand_mask(m):
-    return np.stack((m,m,m),axis=2).astype(np.uint8) * 255
+def scale_and_paste_mask(target_frame, mask, pos, factor=1.0, title=None):
+    scale_and_paste(target_frame, expand_channel(mask)*255, pos, factor,title=title)
 
 
-def draw_lane_line(img,lane_line,scale=1):
-    h,w = img.shape[0:2]
-    pts = []
-    coords = lane_line.interpolate_line_points(h)
-    thickness = max(1, 4 / scale)
-    cv2.polylines(img, [coords], isClosed=False, color=color.red, thickness=thickness)
+def scale_and_paste_channel(target_frame, channel, pos, factor=1.0, title=None):
+    scale_and_paste(target_frame, expand_channel(channel), pos, factor, title=title)
 
 
-def fill_lane_area(img, left, right):
-    h,w = img.shape[0:2]
-    pts = []
-    left_pts = left.interpolate_line_points(h)
-    right_pts = right.interpolate_line_points(h)
-    if len(left_pts) and len(right_pts):
-        coords = np.stack((left_pts, right_pts[::-1,:]), axis=0).astype(np.int32).reshape((-1,2))
-        cv2.fillPoly(img, [coords], color.green)
+def plot_intermediates(target_frame, pipeline, scale=1):
+    for idx,(img,title) in enumerate(pipeline.intermediates):
+        x_pos = idx // 8 + 6
+        y_pos = idx % 8
+        if img is not None:
+            scale_and_paste(target_frame, img, (x_pos, y_pos), factor=0.125*scale, title=title)
 
 
-def detect_lane(orig_img, enhanced_warped_img, warped_img, M_inv,scale=1):
-    left, right = extract_lane_lines(enhanced_warped_img)
-    h,w = enhanced_warped_img.shape[0:2]
-    composite_img = np.zeros((h,w,3), np.uint8)
+frame_rate = 25
+parser = argparse.ArgumentParser()
+parser.add_argument('-1', action="store_const", dest="video_file", const="project")
+parser.add_argument('-2', action="store_const", dest="video_file", const="challenge")
+parser.add_argument('-3', action="store_const", dest="video_file", const="harder_challenge")
+parser.add_argument('-d', action="store_const", dest="delay", const=500, default=10)
+parser.add_argument('-dd', action="store_const", dest="delay", const=1000, default=10)
+parser.add_argument('-t', action="store", dest="t1", default=None, type=str)
+parser.add_argument('-s', action="store", dest="scale", default=4, type=int)
+parser.add_argument('--render', action="store_true", dest="render")
+parser.add_argument('--annotate', action="store_true", dest="annotate")
 
-    fill_lane_area(composite_img, left, right)
+args = parser.parse_args()
 
-    if len(left.current_fit):
-        draw_lane_line(composite_img, left, scale)
+if args.video_file == None:
+    args.video_file = "project"
 
-    if len(right.current_fit):
-        draw_lane_line(composite_img, right, scale)
+if args.t1 == None:
+    if args.video_file == "project":
+        args.t1 = 20 * frame_rate
+    else:
+        args.t1 = 0
+else:
+    t_array = args.t1.split(".")
+    args.t1 = int(t_array[0]) * frame_rate
+    if len(t_array) == 2:
+        args.t1 += int(t_array[1])
 
-    transformed_composite_img = inv_perspective_transform(composite_img, M_inv,scale)
-    annotated_img = cv2.addWeighted(orig_img, 1, transformed_composite_img, 0.3, 0)
-    warped_annotated_img = cv2.addWeighted(warped_img, 1, composite_img, 0.3, 0)
+args.video_file += "_video.mp4"
 
-    annotated_enhanced_warped_img = expand_mask(enhanced_warped_img)
-    draw_lane_points(annotated_enhanced_warped_img, left)
-    draw_lane_points(annotated_enhanced_warped_img, right)
-    draw_histogram(annotated_enhanced_warped_img, left)
-    draw_histogram(annotated_enhanced_warped_img, right)
+pipeline = YUVPipeline()
+detector = LaneDetector(pipeline)
 
-    return annotated_img, warped_annotated_img, annotated_enhanced_warped_img
+def process_frame(frame):
+    global counter
 
+    if not args.render:
+        pipeline.poll()
 
-def enhance_lane_lines(img):
-    img = Common.rgb2hls(img)
-    gradx = grad_x(img, 37, 255, 25)
-    grady = grad_y(img, 13, 255, 31)
-    mag = mag_grad(img, 31, 255, 31)
-    dir = dir_grad(img, -0.52, 1.17, 31)
-    combined = np.zeros_like(dir)
-    combined = np.logical_and(gradx,grady).astype(np.uint8)
-    #combined[((gradx == 1) & (grady == 1)) | ((mag == 1) & (dir == 1))] = 1
-    return combined
+    detector.process(frame)
+    detector.annotate(frame)
 
+    if args.render and not args.annotate:
+        new_frame = detector.annotated_frame
+    else:
+        new_frame = np.zeros((frame.shape[0],frame.shape[1]//8*9,3),np.uint8)
+        scale_and_paste(new_frame, detector.annotated_frame, (0,0), factor=0.75)
+        scale_and_paste(new_frame, detector.pipeline_input, (0,3), factor=scale*0.25)
+        scale_and_paste(new_frame, detector.annotated_detection_input,(1,3), factor=scale*0.25)
+        scale_and_paste(new_frame, detector.warped_annotated_frame, (2,3), factor=scale*0.25)
+        plot_intermediates(new_frame, detector.pipeline, scale=scale)
 
-def extract_lane_lines(img):
-    left_line = LaneLine.ExtractLeft(img)
-    right_line = LaneLine.ExtractRight(img)
-    return left_line, right_line
+    #new_frame = scale_img(new_frame, 2.0)
+    h,w = new_frame.shape[0:2]
+    tr = TextRenderer(new_frame)
+    tr.scale=0.75
 
+    R_left, R_right = detector.get_radii()
+    R_mean = 2.0 / (1/R_left + 1/R_right)
+    d,W = detector.calc_distance_from_center()
 
-# import Common
-# img = mpimg.imread('test.png')
-# f, ax = plt.subplots(2,3)
-# hls_img = Common.rgb2hls(img)
-# ax[0][0].imshow(img[:,:,0],cmap="gray")
-# ax[0][1].imshow(img[:,:,1],cmap="gray")
-# ax[0][2].imshow(img[:,:,2],cmap="gray")
-# ax[1][0].imshow(hls_img[:,:,0],cmap="gray")
-# ax[1][1].imshow(hls_img[:,:,1],cmap="gray")
-# ax[1][2].imshow(hls_img[:,:,2],cmap="gray")
+    tr.put_line("RL=%7.2fm  RR=%7.2fm  R=%7.2fm W=%2.2fm  POS=%2.2fm" % (R_left, R_right, R_mean, W, d))
+    tr.text_at("%02d.%02d" % (counter//frame_rate,counter%frame_rate), (20,h-40))
 
+    counter += 1
 
+    if args.render:
+        new_frame = bgr2rgb(new_frame)
 
-#
-#
-
-
-
-#
-# left = sliding_window(combined, 42)
-# right = sliding_window(combined, 218)
-# plt.imshow(combined)
-# plt.plot(left[:,0], left[:,1], 'ro')
-# plt.plot(right[:,0], right[:,1], 'go')
-#
-#
-#
-# def calc_radius(array):
-#     z = fit_quadratic
+    return new_frame
 
 
-if __name__ == '__main__':
-    img = Common.load_image('test_images/test1.jpg')
-    detect_lane(img)
+clip = VideoFileClip(args.video_file)
+counter = 0
+frame_skip = 1
+start_frame = args.t1
+scale = args.scale
+detector.scale = scale
+key_wait = args.delay
+
+if args.render:
+    out_file_name = args.video_file.split(".")[0] + "_annotated.mp4"
+    annotated_clip = clip.fl_image(process_frame)
+    annotated_clip.write_videofile(out_file_name, fps=frame_rate, audio=False)
+else:
+    for frame in clip.iter_frames():
+        if (counter % frame_skip) or (counter < start_frame):
+            counter += 1
+            continue
+
+        new_frame = process_frame(frame)
+
+        cv2.imshow("test",new_frame)
+        key = cv2.waitKey(key_wait)
+        if key == ord('.'):
+            dir_name = detector.save_screenshots()
+            save_img(new_frame, "output_frame", dir_name)
+            print("Screenshots saved in %s." % dir_name)
+        elif key == ord('+'):
+            key_wait = max(10, key_wait // 2)
+        elif key == ord('-'):
+            key_wait = min(2000, key_wait * 2)
+        elif key == ord(' '):
+            print("PAUSE...")
+            while True:
+                key = cv2.waitKey(10)
+                if key == ord(' '):
+                    break
