@@ -64,9 +64,9 @@ def undistort_image(img):
 
 # plot calibration data when called as main:
 if __name__ == '__main__':
-    c = cv2grid.CV2Grid(1280/2,720/4*1,grid=(2,20))
+    c = cv2grid.CV2Grid(1280/2,720/4*2,grid=(2,2))
     c.draw_grid()
-    for i,img_name in enumerate(glob.glob("camera_cal/calibration1.jpg")):
+    for i,img_name in enumerate(("camera_cal/calibration1.jpg", "test_images/straight_lines1.jpg")):
         print(img_name)
         img = imageutils.load_img(img_name)
         udist_img = undistort_image(img)
