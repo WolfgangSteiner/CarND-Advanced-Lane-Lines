@@ -151,6 +151,3 @@ As much time as I have invested in this project, I feel like barely having scrap
 * Imposing the polynomial of the better fitted lane line onto the worse one.
 
 ![](fig/midi_controller.jpg)
-
-
-Briefly discuss any problems / issues you faced in your implementation of this project. Where will your pipeline likely fail? What could you do to make it more robust?
