@@ -65,7 +65,7 @@ The result of these operations are then combined by a bitwise OR into the result
 ![](output_images/detection_input.png)
 
 ### 4. Lane Line Detection and Polynomial Fitting
-The lane line detection and polynomial fitting is handeled by the class ```LaneLine``` defined in ```LaneLine.py```. The class ```LaneDetector``` defined in ```LaneDetector.py``` holds two instances of the ```LaneLine``` class for the left and right lane lines. Each instance has an anchor point that is set to the lower left/right destination coordinates of the perspective transform. Lane detection and fitting is coordinated by the method ```LaneLine.fit_laen_line```.
+The lane line detection and polynomial fitting is handeled by the class ```LaneLine``` defined in ```LaneLine.py```. The class ```LaneDetector``` defined in ```LaneDetector.py``` holds two instances of the ```LaneLine``` class for the left and right lane lines. Each instance has an anchor point that is set to the lower left/right destination coordinates of the perspective transform. Lane detection and fitting is coordinated by the method ```LaneLine.fit_lane_line```.
 
 The first detection is achieved using a sliding window algorithm (method ```LaneLine.perform_sliding_window``` called from ```LaneLine.detect_with_sliding_window```): Starting from the anchor point,  a histogram of a window centered around the anchor point and extending upward to the center of the input frame is computed. The x-coordinate of the highest peak of this histogram is then selected as a starting point for the sliding window algorithm.
 
