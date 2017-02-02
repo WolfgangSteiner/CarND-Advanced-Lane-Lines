@@ -7,85 +7,6 @@ def binarize_img(img, min_thres, max_thres):
     return cv2.inRange(img, min_thres, max_thres) / 255
 
 
-def bgr2rgb(img):
-    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-
-def bgr2hls(img):
-    return cv2.cvtColor(img, cv2.COLOR_BGR2HLS)
-
-
-def hls2bgr(img):
-    return cv2.cvtColor(img, cv2.COLOR_HLS2BGR)
-
-
-def bgr2hsv(img):
-    return cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
-
-def hsv2bgr(img):
-    return cv2.cvtColor(img, cv2.COLOR_HSV2BGR)
-
-
-def split_hls(img):
-    return split_channels(bgr2hls(img))
-
-
-def join_hls(h,l,s):
-    return hls2bgr(combine_channels(h,l,s))
-
-
-def bgr2yuv(img):
-    return cv2.cvtColor(img, cv2.COLOR_BGR2YUV)
-
-
-def yuv2bgr(img):
-    return cv2.cvtColor(img, cv2.COLOR_YUV2BGR)
-
-
-def split_yuv(img):
-    return split_channels(bgr2yuv(img))
-
-
-def join_yuv(y,u,v):
-    return yuv2bgr(combine_channels(y,u,v))
-
-def split_hsv(img):
-    return split_channels(bgr2hsv(img))
-
-
-def split_channels(img):
-    return img[:,:,0], img[:,:,1], img[:,:,2]
-
-
-def combine_channels(a,b,c):
-    return np.stack((a,b,c),axis=2)
-
-
-def expand_channel(c):
-    return np.stack((c,c,c),axis=2).astype(np.uint8)
-
-
-def expand_mask(m):
-    return expand_channel(m) * 255
-
-
-def AND(*args):
-    result = args[0]
-    for a in args[1:]:
-        result = cv2.bitwise_and(result, a)
-    return result
-
-def OR(*args):
-    result = args[0]
-    for a in args[1:]:
-        result = cv2.bitwise_or(result, a)
-    return result
-
-def NOT(a):
-    return 1 - a
-
-
 def equalize_channel(*args):
     results = []
     for c in args:
@@ -174,8 +95,6 @@ def equalize_grid_channel(*args, ny=16, nx=16):
         return results[0]
     else:
         return results
-
-
 
 
 def hls_mask(img, min_h, max_h, min_l, max_l, min_s, max_s):

@@ -1,5 +1,6 @@
 import cv2
 from ImageThresholding import *
+from imageutils import *
 from MidiControl import MidiManager, MidiControl
 
 class FilterPipeline(MidiManager):
@@ -8,7 +9,13 @@ class FilterPipeline(MidiManager):
         self.intermediates = []
 
     def process(self,img):
+        img = do_process(img)
         return img
+
+
+    def do_process(self,img):
+        return img
+
 
     def add_intermediate(self, img, title=None):
         self.intermediates.append((img,title))
@@ -41,7 +48,7 @@ class YUVPipeline(FilterPipeline):
         self.dir_y_delta = MidiControl(self, "dir_y_delta", 112, value=0.5, min=0.0, max=1.0)
         self.dir_y_ksize = MidiControl(self, "dir_y_ksize", 107, value=5, allowed_values=range(3,33,2))
 
-        self.mag_v_min = MidiControl(self, "mag_v_min", 7, value=32)
+        self.mag_v_min = MidiControl(self, "mag_v_min", 7, value=16)
         self.mag_v_max = MidiControl(self, "mag_v_max", 116, value=255)
         self.mag_v_ksize = MidiControl(self, "mag_v_ksize", 108, value=7, allowed_values=range(3,33,2))
 
@@ -55,6 +62,7 @@ class YUVPipeline(FilterPipeline):
         self.intermediates = []
         h,w = warped_frame.shape[0:2]
         y,u,v = split_yuv(warped_frame)
+        lower_margin = 8
         #y_eq,u_eq,v_eq = equalize_adapthist_channel(y,u,v, )
         #y_eq,u_eq,v_eq = equalize_adapthist_channel(y,u,v, clip_limit=self.eq_limit.value, nbins=self.eq_bins.value, kernel_size=(int(self.eq_ny.value),int(self.eq_nx.value)))
         y_eq,u_eq,v_eq = equalize_channel(y,u,v)
@@ -70,7 +78,9 @@ class YUVPipeline(FilterPipeline):
         y_v = binarize_img(v_eq, 0, self.y_v_max.value)
         y_v = dilate(y_v, 3)
         yellow = AND(y_y,y_u,y_v)
-        yellow[h-4:h,:] *= 0
+        yellow[h-lower_margin:h,:] *= 0
+        mag_v_eq = mag_grad(v, self.mag_v_min.value, self.mag_v_max.value, ksize=self.mag_v_ksize.value)
+        y_mag_v = AND(yellow,mag_v_eq)
 
         #------------ white -------------#
         w_y = binarize_img(y_eq, self.w_y_min.value, 255)
@@ -80,14 +90,12 @@ class YUVPipeline(FilterPipeline):
         w_uv = dilate(w_uv, 3)
 
         white = AND(w_y,w_uv)
-        white[h-4:h,:] *= 0
+        white[h-lower_margin:h,:] *= 0
         #white = cv2.dilate(white,kernel5,iterations=1)
 
         mag_y_eq = mag_grad(y, self.mag_y_min.value, self.mag_y_max.value, ksize=self.mag_y_ksize.value)
         #mag_u_eq = mag_grad(u_eq, self.mag_u_min.value, self.mag_u_max.value, ksize=self.mag_u_ksize.value)
-        mag_v_eq = mag_grad(v, self.mag_v_min.value, self.mag_v_max.value, ksize=self.mag_v_ksize.value)
 
-        y_mag_v = AND(yellow,mag_v_eq)
         w_mag_y = AND(white,mag_y_eq)
 
         th = self.dir_y_dir.value

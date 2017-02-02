@@ -8,6 +8,7 @@ import shutil
 import cv2
 import tarfile
 from zipfile import ZipFile
+import datetime
 
 def mkdir(path):
     try:
@@ -28,12 +29,25 @@ def uuid_file_name(extension, dir="."):
     return dir + '/' + str(uuid.uuid4()) + "." + extension
 
 
+def date_file_name(extension=None, dir="."):
+    new_file_name = datetime.datetime.now().isoformat('_')
+    new_file_name = new_file_name.replace(":","-")
+
+    if extension is not None:
+        new_file_name += "." + extension
+    if dir != ".":
+        new_file_name = dir + '/' + new_file_name
+
+    return new_file_name
+
+
 def save_screenshot(cv_img):
     path = "screenshots"
     mkdir(path)
     filename = uuid_file_name("png", dir=path)
     cv2.imwrite(filename, cv_img)
     print("saving image %s..." % filename)
+
 
 
 # Taken from https://blog.shichao.io/2012/10/04/progress_speed_indicator_for_urlretrieve_in_python.html

@@ -1,19 +1,23 @@
 from LaneLine import LaneLine
 from Drawing import *
 from Color import color
-from ImageProcessing import *
+from perspective_transform import *
 from ImageThresholding import *
+from calibrate_camera import undistort_image
+import imageutils
+import Utils
 
 class LaneDetector(object):
     def __init__(self, pipeline):
         self.left_lane_line = LaneLine()
         self.right_lane_line = LaneLine()
-        self.scale = 4
+        self.scale = 1
         self.pipeline = pipeline
         self.frame_size = None
         # relative distance of left/right lane line from
         # left/right edge of bird's eye view
         self.dst_margin_rel = 11.0/32.0
+#        self.dst_margin_rel = 0.25
         self.dst_margin_abs = None
         self.is_initialized = False
         self.last_lane_width = 3.7
@@ -25,16 +29,18 @@ class LaneDetector(object):
     def process(self, frame):
         if not self.is_initialized:
             self.frame_size = np.array(frame.shape[0:2])
-            self.input_frame_size = self.frame_size / self.scale
+            self.input_frame_size = self.frame_size // self.scale
             h,w = self.input_frame_size
-
+            print(self.input_frame_size)
             self.dst_margin_abs = int(w * self.dst_margin_rel)
 
             # meters per pixel in y dimension
-            self.ym_per_px = 21.0 / h
+            self.ym_per_px =  48 / h
 
             # meters per pixel in x dimension
             self.xm_per_px = 3.7 / (w - 2.0 * self.dst_margin_abs)
+
+            print(self.xm_per_px, self.ym_per_px)
 
             # anchor point for lane detection
             x_anchor_left = self.dst_margin_abs #+ w // 32
@@ -53,12 +59,16 @@ class LaneDetector(object):
 
             self.is_initialized = True
 
-        self.warped_frame, self.M_inv = perspective_transform(frame,self.dst_margin_rel)
-        self.pipeline_input = scale_img(self.warped_frame, 1.0/self.scale)
+        self.input_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        self.undistorted_frame = undistort_image(self.input_frame)
+        self.warped_frame, self.M_inv = perspective_transform(self.undistorted_frame,self.dst_margin_rel)
+        self.pipeline_input = imageutils.scale_img(self.warped_frame, 1.0/self.scale)
         self.detection_input = self.pipeline.process(self.pipeline_input)
 
         self.left_lane_line.fit_lane_line(self.detection_input)
         self.right_lane_line.fit_lane_line(self.detection_input)
+        self.detection_input *= 255
+
 
 
     def annotate(self, frame):
@@ -73,14 +83,12 @@ class LaneDetector(object):
             self.draw_lane_line(composite_img, self.right_lane_line)
 
         transformed_composite_img = inv_perspective_transform(composite_img, self.M_inv)
-        annotated_frame = cv2.addWeighted(frame, 1, transformed_composite_img, 0.3, 0)
-        warped_annotated_frame = cv2.addWeighted(self.pipeline_input, 1, scale_img(composite_img, 1/self.scale), 0.3, 0)
+        self.annotated_frame = cv2.addWeighted(self.undistorted_frame, 1, transformed_composite_img, 0.3, 0)
+        self.warped_annotated_frame = cv2.addWeighted(self.pipeline_input, 1, imageutils.scale_img(composite_img, 1/self.scale), 0.3, 0)
 
-        annotated_detection_input = expand_mask(self.detection_input)
-        annotated_detection_input = self.annotate_lane_lines(annotated_detection_input)
-        warped_annotated_frame = self.annotate_lane_lines(warped_annotated_frame)
-
-        return annotated_frame, warped_annotated_frame, annotated_detection_input
+        self.annotated_detection_input = imageutils.expand_mask(self.detection_input)
+        self.annotated_detection_input = self.annotate_lane_lines(self.annotated_detection_input)
+        self.warped_annotated_frame = self.annotate_lane_lines(self.warped_annotated_frame)
 
 
     def annotate_lane_lines(self, img):
@@ -94,10 +102,8 @@ class LaneDetector(object):
 
 
     def get_radii(self):
-        R_inv_left = self.left_lane_line.inv_radius.value
-        R_inv_right = self.right_lane_line.inv_radius.value
-        R_left = 1.0 / R_inv_left if R_inv_left is not None else 1.0e5
-        R_right = 1.0 / R_inv_right if R_inv_right is not None else 1.0e5
+        R_left = self.left_lane_line.radius.value
+        R_right = self.right_lane_line.radius.value
         return R_left, R_right
 
 
@@ -108,22 +114,22 @@ class LaneDetector(object):
 
         if d_left == None and d_right == None:
             d = self.last_distance_from_center
-            w = 3.7
+            w_lane = 3.7
         elif d_left == None:
             d = self.last_lane_width / 2 - d_right
-            w = 3.7
+            w_lane = 3.7
         elif d_right == None:
             d = self.last_lane_width / 2 + d_left
-            w = 3.7
+            w_lane = 3.7
         else:
-            w = d_right - d_left
-            d = w/2 - d_right
-            self.last_lane_width = w
+            w_lane = d_right - d_left
+            d = w_lane/2 - d_right
+            self.last_lane_width = w_lane
 
         self.last_distance_from_center = d
         if d is None:
             d = 0.0
-        return d,w
+        return d,w_lane
 
 
     def draw_lane_line(self,img,lane_line):
@@ -148,3 +154,28 @@ class LaneDetector(object):
         if has_left_pts and has_right_pts:
             coords = np.stack((left_pts, right_pts[::-1,:]), axis=0).astype(np.int32).reshape((-1,2))
             cv2.fillPoly(img, [coords * self.scale], color.green)
+
+
+    def save_screenshots(self):
+        dir_name = "output_images/" + Utils.date_file_name()
+        Utils.mkdir(dir_name)
+
+        img_names = (
+            "input_frame",
+            "undistorted_frame",
+            "warped_frame",
+            "pipeline_input",
+            "detection_input",
+            "annotated_frame",
+            "warped_annotated_frame",
+            "annotated_detection_input")
+
+        for n in img_names:
+            imageutils.save_img(eval("self."+n), n, path=dir_name)
+
+        pipeline_dir_name = dir_name + '/pipeline'
+        Utils.mkdir(pipeline_dir_name)
+        for img,title in self.pipeline.intermediates:
+            imageutils.save_img(img, title, pipeline_dir_name)
+
+        return dir_name

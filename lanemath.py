@@ -11,7 +11,7 @@ def abs_change(a,b):
     return np.abs(a - b)
 
 
-def calc_radius(a):
+def calc_radius(a,y):
     eps = 1e-5
 
     if a is None:
@@ -21,11 +21,13 @@ def calc_radius(a):
     else:
         A = a[2]
         B = a[1]
-        R = np.power(1 + B**2, 1.5) / np.maximum(1e-5, np.abs(A))
+        R = (1 + (2*A*y + B)**2)**1.5 / max(1e-5, abs(2*A))
         return R
 
+
 def fit_quadratic(lane_x, lane_y):
-    return poly.polyfit(lane_y,lane_x,2)
+    p =  poly.polyfit(lane_y,lane_x,[0,1,2])
+    return p
 
 
 def find_peak(histogram):
